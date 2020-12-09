@@ -10,11 +10,6 @@ import (
 
 var templates *template.Template
 
-// TODO: Include later
-type User struct {
-	Nickname string
-}
-
 func renderTemplate(w http.ResponseWriter, tmpl string) {
 	file := fmt.Sprintf("%s.html", tmpl)
 	err := templates.ExecuteTemplate(w, file, nil)
@@ -54,7 +49,16 @@ func editHandler(w http.ResponseWriter, r *http.Request) {
 	// TODO: if logged in, serve the edit page
 	switch r.Method {
 	case "GET":
+		renderTemplate(w, "edit")
 	case "POST":
+		// send the information to the TCP server
+		r.ParseMultipartForm(10 << 20)
+		file, handler, err := r.FormFile("pic")
+		if err != nil {
+			log.Fatalln(err)
+		}
+		defer file.Close()
+
 	default:
 		log.Fatalln("Unused method " + r.Method)
 	}
