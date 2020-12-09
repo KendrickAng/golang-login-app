@@ -2,9 +2,13 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="23ff0517-4c5e-4cfa-9cb8-ff9e46034cda" name="Default Changelist" comment="">
-      <change afterPath="$PROJECT_DIR$/mysql-db/main.go" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/protocol/index.go" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/security/index.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/go.mod" beforeDir="false" afterPath="$PROJECT_DIR$/go.mod" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/http-server/main.go" beforeDir="false" afterPath="$PROJECT_DIR$/http-server/main.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/http-server/templates/edit.html" beforeDir="false" afterPath="$PROJECT_DIR$/http-server/templates/edit.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mysql-db/main.go" beforeDir="false" afterPath="$PROJECT_DIR$/mysql-db/main.go" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -14,6 +18,9 @@
   <component name="GOROOT" url="file:///usr/local/go" />
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="GoDepProject">
+    <integration-enabled>true</integration-enabled>
   </component>
   <component name="ProjectId" id="1lM4VI3IPhjDdA4heVa87tHJUmH" />
   <component name="ProjectLevelVcsManager" settingsEditedManually="true" />
@@ -25,10 +32,19 @@
     <property name="RunOnceActivity.OpenProjectViewOnStart" value="true" />
     <property name="RunOnceActivity.ShowReadmeOnStart" value="true" />
     <property name="WebServerToolWindowFactoryState" value="false" />
+    <property name="configurable..is.expanded" value="true" />
+    <property name="configurable.GoLibrariesConfigurable.is.expanded" value="true" />
     <property name="go.import.settings.migrated" value="true" />
     <property name="go.sdk.automatically.set" value="true" />
     <property name="go.tried.to.enable.integration.vgo.integrator" value="true" />
     <property name="last_opened_file_path" value="$USER_HOME$" />
+    <property name="settings.editor.selected.configurable" value="go.vgo" />
+  </component>
+  <component name="RecentsManager">
+    <key name="MoveFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$" />
+      <recent name="$PROJECT_DIR$/mysql-db" />
+    </key>
   </component>
   <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="application-level" UseSingleDictionary="true" transferred="true" />
   <component name="TypeScriptGeneratedFilesManager">
@@ -44,9 +60,14 @@
         </entry>
       </map>
     </option>
+    <option name="oldMeFiltersMigrated" value="true" />
   </component>
   <component name="VcsManagerConfiguration">
     <MESSAGE value="initial http and tcp server&#10;- HTTP server serves login.html, edit.html&#10;- On login, HTTP server forwards connection to TCP server&#10;- TCP server interprets request and handles authentication, etc" />
-    <option name="LAST_COMMIT_MESSAGE" value="initial http and tcp server&#10;- HTTP server serves login.html, edit.html&#10;- On login, HTTP server forwards connection to TCP server&#10;- TCP server interprets request and handles authentication, etc" />
+    <MESSAGE value="initial code for mysql server" />
+    <option name="LAST_COMMIT_MESSAGE" value="initial code for mysql server" />
+  </component>
+  <component name="VgoProject">
+    <integration-enabled>true</integration-enabled>
   </component>
 </project>
