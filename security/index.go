@@ -2,12 +2,16 @@ package security
 
 import (
 	"golang.org/x/crypto/bcrypt"
+	"log"
 )
 
 // Returns the immutable string hash of a password; error is nil if success
-func Hash(pw string) (string, error) {
+func Hash(pw string) string {
 	hash, err := bcrypt.GenerateFromPassword([]byte(pw), bcrypt.DefaultCost)
-	return string(hash), err
+	if err != nil {
+		log.Fatalln(err)
+	}
+	return string(hash)
 }
 
 // Checks that a password hashes to given hash, returns true if equal
