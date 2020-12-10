@@ -24,7 +24,6 @@ type User struct {
 }
 
 type Request struct {
-	Method string // no need
 	Source string
 	Data   map[string]string
 }

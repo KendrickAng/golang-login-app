@@ -24,6 +24,7 @@ func rowsToUser(rows *sql.Rows) []protocol.User {
 }
 
 func GetUsers() []protocol.User {
+	ensureConnected(db)
 	res, err := db.Query("SELECT * FROM users")
 	if err != nil {
 		log.Panicln(err)
@@ -33,6 +34,7 @@ func GetUsers() []protocol.User {
 
 // Retrieves a user based on key (his unique username)
 func GetUser(key string) []protocol.User {
+	ensureConnected(db)
 	res, err := db.Query("SELECT * FROM users WHERE username = ?", key)
 	if err != nil {
 		log.Panicln(err)
@@ -40,19 +42,24 @@ func GetUser(key string) []protocol.User {
 	return rowsToUser(res)
 }
 
-func connect() *sql.DB {
-	database, err := sql.Open("mysql", "root:MonsterHunter!@@tcp(localhost:3306)/users_db")
+func connect() {
+	var err error
+	db, err = sql.Open("mysql", "root:MonsterHunter!@@tcp(localhost:3306)/users_db")
 	if err != nil {
 		log.Panicln(err.Error())
 	}
 	log.Println("Connected to MySQL database")
-	return database
 }
 
-func Connect() {
-	db = connect()
-}
-
-func Disconnect() {
+func disconnect() {
 	_ = db.Close()
+}
+
+func ensureConnected(ptr *sql.DB) {
+	if ptr == nil {
+		connect()
+	}
+	if db == nil {
+		panic("Not connected to MySQL database!")
+	}
 }

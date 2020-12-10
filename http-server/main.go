@@ -32,72 +32,55 @@ func renderTemplate(w http.ResponseWriter, tmpl string) {
 	}
 }
 
-func rootHandler(w http.ResponseWriter, r *http.Request) {
-	http.Redirect(w, r, "/login", http.StatusMovedPermanently)
-}
-
-// Main handler called when logging in
-func loginReqHandler(w http.ResponseWriter, r *http.Request) {
-	if auth.IsLoggedIn(r) {
-		http.Redirect(w, r, "/edit", http.StatusSeeOther)
-		return
-	}
-
-	// extract sent form data
-	data := processLoginForm(r)
-
-	// send the information to TCP server
-	conn, err := net.Dial("tcp", "localhost:8081")
-	if err != nil {
-		log.Fatalln(err)
-	}
-	defer conn.Close()
-	request := protocol.CreateRequest(data)
-	log.Println("Sending request: " + string(request))
-	_, err = conn.Write(request)
-	//_, err = fmt.Fprintf(conn, request)
-	if err != nil {
-		log.Panicln(err)
-	}
-
-	// receive the response with timeout
-	err = conn.SetDeadline(time.Now().Add(TIMEOUT))
-	if err != nil {
-		log.Panicln(err)
-	}
-	dec := json.NewDecoder(conn)
-	err = conn.SetDeadline(time.Time{})
-	var res protocol.Response
-	err = dec.Decode(&res)
-	if err == io.EOF {
-		log.Println("EOF!!!")
-	} else if errors.Is(err, os.ErrDeadlineExceeded) {
-		http.Error(w, "TCP Server timeout", http.StatusInternalServerError)
-		return
-	} else if err != nil {
-		log.Fatalln(err)
-	} else {
-		log.Print("TCP Server response: ")
-		log.Println(res)
-		loginResHandler(w, r, res)
-	}
-}
-
-// gets username and password from sent form
-func processLoginForm(r *http.Request) protocol.Request {
+func createLoginReq(r *http.Request) protocol.Request {
 	username := r.FormValue("username")
 	password := r.FormValue("password")
 	ret := make(map[string]string)
 	ret[protocol.Username] = username
 	ret[protocol.PwPlain] = password
 	return protocol.Request{
-		Method: "POST",
 		Source: "LOGIN",
 		Data:   ret,
 	}
 }
 
-func loginResHandler(w http.ResponseWriter, r *http.Request, res protocol.Response) {
+func sendLoginReq(data protocol.Request) net.Conn {
+	conn, err := net.Dial("tcp", "localhost:8081")
+	if err != nil {
+		log.Fatalln(err)
+	}
+	req := protocol.CreateRequest(data)
+	log.Println("Sending request: " + string(req))
+	_, err = conn.Write(req)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	return conn
+}
+
+func receiveLoginRes(w http.ResponseWriter, con net.Conn) protocol.Response {
+	err := con.SetDeadline(time.Now().Add(TIMEOUT))
+	if err != nil {
+		log.Panicln(err)
+	}
+	dec := json.NewDecoder(con)
+	var res protocol.Response
+	err = dec.Decode(&res)
+	if err == io.EOF {
+		log.Println("EOF when reading login response")
+	} else if errors.Is(err, os.ErrDeadlineExceeded) {
+		http.Error(w, "TCP Server timeout", http.StatusInternalServerError)
+		return protocol.Response{}
+	} else if err != nil {
+		log.Fatalln(err)
+	}
+	log.Print("TCP Server response: ")
+	log.Println(res)
+	err = con.SetDeadline(time.Time{})
+	return res
+}
+
+func processLoginRes(w http.ResponseWriter, r *http.Request, res protocol.Response) {
 	if res.Code != protocol.USER_FOUND {
 		http.Redirect(w, r, "/register", http.StatusSeeOther)
 		return
@@ -109,6 +92,21 @@ func loginResHandler(w http.ResponseWriter, r *http.Request, res protocol.Respon
 		Value: sid,
 	})
 	log.Println("Created session: " + username + " " + sid)
+	http.Redirect(w, r, "/edit", http.StatusSeeOther)
+}
+
+// Main handler called when logging in
+func login(w http.ResponseWriter, r *http.Request) {
+	if auth.IsLoggedIn(r) {
+		http.Redirect(w, r, "/edit", http.StatusSeeOther)
+		return
+	}
+
+	req := createLoginReq(r)
+	conn := sendLoginReq(req)
+	res := receiveLoginRes(w, conn)
+	processLoginRes(w, r, res)
+	conn.Close()
 }
 
 // gets the submitted image (if any) and saves it, returning stored address
@@ -132,29 +130,24 @@ func processEditForm(r *http.Request) protocol.Request {
 	ret[protocol.Nickname] = nickname
 	ret[protocol.ProfilePic] = imgPath
 	return protocol.Request{
-		Method: "POST",
 		Source: "EDIT",
 		Data:   ret,
 	}
 }
 
-// serves loginReqHandler form for users/queries TCP server
 func loginHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		// TODO: get the authenticated user, 404 if no such user.
-		// TODO: How to decide whether user is authenticated? cookies?
 		renderTemplate(w, "login")
 	case http.MethodPost:
-		loginReqHandler(w, r)
+		login(w, r)
 	default:
 		log.Fatalln("Unused method" + r.Method)
 	}
 }
 
 func editHandler(w http.ResponseWriter, r *http.Request) {
-	//name := r.URL.Path[len("/edit/"):]
-	// TODO: Check for authentication, redirect to loginReqHandler otherwise (how to authenticate?)
+	// TODO: Check for authentication, redirect to login otherwise (how to authenticate?)
 	// TODO: if logged in, serve the edit page
 	switch r.Method {
 	case http.MethodGet:
@@ -173,6 +166,10 @@ func editHandler(w http.ResponseWriter, r *http.Request) {
 	default:
 		log.Fatalln("Unused method " + r.Method)
 	}
+}
+
+func rootHandler(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, "/login", http.StatusMovedPermanently)
 }
 
 func registerHandler(w http.ResponseWriter, r *http.Request) {
