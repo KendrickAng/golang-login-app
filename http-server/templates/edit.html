@@ -1,5 +1,9 @@
 <h1>Edit</h1>
 
+{{ if . }}
+<h6>{{.}}</h6>
+{{ end }}
+
 <form action="/edit" enctype="multipart/form-data" method="POST">
     <div>
         <label for="nickname">New Nickname</label>
@@ -11,3 +15,5 @@
     </div>
     <button type="submit">Submit</button>
 </form>
+
+<a href="/logout">Logout</a>

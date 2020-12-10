@@ -32,6 +32,18 @@ func GetUsers() []protocol.User {
 	return rowsToUser(res)
 }
 
+func EditUser(key string, nickname string, picPath string) int64 {
+	ensureConnected(db)
+	result, err := db.Exec("UPDATE users SET nickname=?, profile_pic=? WHERE username=?", nickname, picPath, key)
+	if err != nil {
+		log.Panicln(err)
+	}
+	log.Println("UPDATE: username: " + key + " | nickname: " + nickname + " | profile_pic: " + picPath)
+	var rows int64
+	rows, err = result.RowsAffected()
+	return rows
+}
+
 // Retrieves a user based on key (his unique username)
 func GetUser(key string) []protocol.User {
 	ensureConnected(db)

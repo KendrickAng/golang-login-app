@@ -14,6 +14,7 @@ const (
 	PwPlain    = "password"
 	PwHash     = "pwhash"
 	ProfilePic = "profilepic"
+	SessionId  = "sessionid"
 )
 
 type User struct {
@@ -38,6 +39,8 @@ type Response struct {
 const (
 	NO_SUCH_USER = 100
 	USER_FOUND   = 101
+	EDIT_SUCCESS = 200
+	EDIT_FAILED  = 201
 )
 
 // Creates an encoded POST request (to be sent to server)

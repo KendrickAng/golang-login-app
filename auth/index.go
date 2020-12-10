@@ -45,7 +45,26 @@ func IsValidPassword(username string, pw string) bool {
 func CreateSession(username string) string {
 	id := uuid.NewV4().String()
 	dbSessions[id] = username
-	log.Println("Sessions DB: ")
+	log.Println("Session " + id + " Created. DB: ")
 	log.Println(dbSessions)
 	return id
+}
+
+// returns username for a given session uuid, or nil if key doesn't exist
+func GetSessionUser(req *http.Request) string {
+	cookie, err := req.Cookie(SESS_COOKIE_NAME)
+	if err != nil {
+		return ""
+	}
+	return dbSessions[cookie.Value]
+}
+
+func DelSessionUser(req *http.Request) {
+	cookie, err := req.Cookie(SESS_COOKIE_NAME)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	log.Println("Session " + cookie.Value + " Deleted. DB: ")
+	log.Println(dbSessions)
+	delete(dbSessions, cookie.Value)
 }

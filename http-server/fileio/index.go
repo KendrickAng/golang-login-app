@@ -8,7 +8,7 @@ import (
 )
 
 // saves the image to the /assets/ directory. Returns relative filepath if success
-func ImageUpload(file multipart.File, pwHash string) (string, error) {
+func ImageUpload(file multipart.File, suffix string) (string, error) {
 	// read
 	bytes, err := ioutil.ReadAll(file)
 	if err != nil {
@@ -16,7 +16,7 @@ func ImageUpload(file multipart.File, pwHash string) (string, error) {
 	}
 
 	// create new file, name is based on password hash (unique)
-	path := filepath.Join("../assets/", pwHash)
+	path := filepath.Join("../assets/", suffix)
 	dest, err := os.Create(path)
 	if err != nil {
 		return "", err

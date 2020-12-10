@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"example.com/kendrick/auth"
+	database "example.com/kendrick/mysql-db"
 	"example.com/kendrick/protocol"
 	"io"
 	"log"
@@ -55,22 +56,39 @@ func handleLoginReq(req protocol.Request) protocol.Response {
 	}
 }
 
-func handleEditReq(req protocol.Request) {
-	//data := req.Data
+func handleEditReq(req protocol.Request) protocol.Response {
+	data := req.Data
+	username := data[protocol.Username]
+	nickname := data[protocol.Nickname]
+	picPath := data[protocol.ProfilePic]
+	log.Println("Handling Edit Req: ", username, nickname, picPath)
+
+	// Find the username, and replace the relevant details
 	// TODO
+	numRows := database.EditUser(username, nickname, picPath)
+	if numRows == 1 {
+		return protocol.Response{
+			Code:        protocol.EDIT_SUCCESS,
+			Description: "Edited " + username + " successfully",
+			Data:        nil,
+		}
+	}
+	return protocol.Response{
+		Code:        protocol.EDIT_FAILED,
+		Description: "Editing " + username + " failed",
+		Data:        nil,
+	}
 }
 
 // Invokes the relevant request handler
-func handleData(req protocol.Request, conn net.Conn) protocol.Response {
+func handleData(req protocol.Request) protocol.Response {
 	switch req.Source {
 	case "LOGIN":
 		return handleLoginReq(req)
 	case "EDIT":
-		handleEditReq(req)
-		_, err := conn.Write([]byte("Edit request\n"))
-		if err != nil {
-			log.Panicln(err)
-		}
+		return handleEditReq(req)
+	case "LOGOUT":
+
 	default:
 		log.Fatalln("Unknown request source " + req.Source)
 	}
@@ -80,7 +98,7 @@ func handleData(req protocol.Request, conn net.Conn) protocol.Response {
 func handleConn(conn net.Conn) {
 	defer conn.Close()
 	message := receiveData(conn)
-	response := handleData(message, conn)
+	response := handleData(message)
 	sendResponse(response, conn)
 }
 
