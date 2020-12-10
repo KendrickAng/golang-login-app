@@ -3,19 +3,13 @@ package main
 import (
 	"encoding/json"
 	"example.com/kendrick/auth"
-	"example.com/kendrick/mysql-db"
 	"example.com/kendrick/protocol"
 	"io"
 	"log"
 	"net"
 )
 
-func handleConn(conn net.Conn) {
-	defer conn.Close()
-	handleReq(conn)
-}
-
-func handleReq(conn net.Conn) {
+func receiveData(conn net.Conn) protocol.Request {
 	dec := json.NewDecoder(conn)
 	var m protocol.Request
 	if err := dec.Decode(&m); err == io.EOF {
@@ -24,7 +18,16 @@ func handleReq(conn net.Conn) {
 		log.Fatalln(err)
 	}
 	log.Println(m)
-	mux(m, conn)
+	return m
+}
+
+func sendResponse(data protocol.Response, conn net.Conn) {
+	res := protocol.CreateResponse(data)
+	_, err := conn.Write(res)
+	log.Println("Handling LOGIN request: " + string(res))
+	if err != nil {
+		log.Panicln(err)
+	}
 }
 
 // Checks the validity of username and password hash in login request.
@@ -58,27 +61,27 @@ func handleEditReq(req protocol.Request) {
 }
 
 // Invokes the relevant request handler
-func mux(req protocol.Request, conn net.Conn) {
+func handleData(req protocol.Request, conn net.Conn) protocol.Response {
 	switch req.Source {
 	case "LOGIN":
-		res := protocol.CreateResponse(handleLoginReq(req))
-		_, err := conn.Write(res)
-
-		log.Println("Handling LOGIN request: " + string(res))
-		if err != nil {
-			log.Panicln(err)
-		}
+		return handleLoginReq(req)
 	case "EDIT":
 		handleEditReq(req)
 		_, err := conn.Write([]byte("Edit request\n"))
 		if err != nil {
 			log.Panicln(err)
 		}
+	default:
+		log.Fatalln("Unknown request source " + req.Source)
 	}
+	return protocol.Response{}
 }
 
-func init() {
-	database.Connect()
+func handleConn(conn net.Conn) {
+	defer conn.Close()
+	message := receiveData(conn)
+	response := handleData(message, conn)
+	sendResponse(response, conn)
 }
 
 func main() {
