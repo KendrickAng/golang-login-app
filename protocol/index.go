@@ -42,6 +42,8 @@ const (
 	EDIT_SUCCESS   = 200
 	EDIT_FAILED    = 201
 	LOGOUT_SUCCESS = 300
+	INSERT_SUCCESS = 400
+	INSERT_FAILED  = 401
 )
 
 // Creates an encoded POST request (to be sent to server)

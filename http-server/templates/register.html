@@ -1,5 +1,9 @@
 <h1>Register</h1>
 
+{{ if . }}
+<h6>{{.}}</h6>
+{{ end }}
+
 <form action="/register" method="POST">
     <div>
         <label for="uname">Username</label>

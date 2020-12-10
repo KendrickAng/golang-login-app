@@ -92,6 +92,27 @@ func handleLogoutReq(req protocol.Request) protocol.Response {
 	}
 }
 
+func handleRegReq(req protocol.Request) protocol.Response {
+	data := req.Data
+	nickname := data[protocol.Nickname]
+	username := data[protocol.Username]
+	password := data[protocol.PwHash]
+
+	numRows := database.CreateUser(username, password, nickname)
+	if numRows == 1 {
+		return protocol.Response{
+			Code:        protocol.INSERT_SUCCESS,
+			Description: "INSERT: " + username + " " + password + " " + nickname,
+			Data:        nil,
+		}
+	}
+	return protocol.Response{
+		Code:        protocol.INSERT_FAILED,
+		Description: "INSERT failed: " + username + " " + password + " " + nickname,
+		Data:        nil,
+	}
+}
+
 // Invokes the relevant request handler
 func handleData(req protocol.Request) protocol.Response {
 	switch req.Source {
@@ -101,6 +122,8 @@ func handleData(req protocol.Request) protocol.Response {
 		return handleEditReq(req)
 	case "LOGOUT":
 		return handleLogoutReq(req)
+	case "REGISTER":
+		return handleRegReq(req)
 	default:
 		log.Fatalln("Unknown request source " + req.Source)
 	}

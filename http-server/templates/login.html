@@ -1,5 +1,9 @@
 <h1>Login</h1>
 
+{{ if . }}
+<h6>{{.}}</h6>
+{{ end }}
+
 <form action="/login" method="POST">
     <div>
         <label for="uname">Username</label>

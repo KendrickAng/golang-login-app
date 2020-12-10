@@ -44,6 +44,19 @@ func EditUser(key string, nickname string, picPath string) int64 {
 	return rows
 }
 
+// TODO: Not sure whether this works
+func CreateUser(username string, pwHash string, nickname string) int64 {
+	ensureConnected(db)
+	result, err := db.Exec("INSERT INTO users VALUES (?, ?, ?, ?)", username, nickname, pwHash, sql.NullString{})
+	if err != nil {
+		log.Panicln(err)
+	}
+	log.Println("INSERT: username: " + username + " | nickname: " + nickname + " | pwHash " + pwHash)
+	var rows int64
+	rows, err = result.RowsAffected()
+	return rows
+}
+
 // Retrieves a user based on key (his unique username)
 func GetUser(key string) []protocol.User {
 	ensureConnected(db)

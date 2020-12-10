@@ -6,6 +6,7 @@ import (
 	"example.com/kendrick/auth"
 	"example.com/kendrick/http-server/fileio"
 	"example.com/kendrick/protocol"
+	"example.com/kendrick/security"
 	"fmt"
 	"html/template"
 	"io"
@@ -195,14 +196,47 @@ func registerHandler(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		renderTemplate(w, "register", nil)
 	case http.MethodPost:
-		createUser(r)
+		create(w, r)
 	default:
 		log.Fatalln("Unused method " + r.Method)
 	}
 }
 
-func createUser(r *http.Request) {
-	// TODO
+func create(w http.ResponseWriter, r *http.Request) {
+	req := createRegReq(r)
+	conn := sendReq(req)
+	res := receiveRes(w, conn)
+	processRegRes(w, r, res)
+	conn.Close()
+}
+
+func createRegReq(r *http.Request) protocol.Request {
+	username := r.FormValue("username")
+	password := r.FormValue("password")
+	nickname := r.FormValue("nickname")
+	ret := make(map[string]string)
+	ret[protocol.Username] = username
+	ret[protocol.PwHash] = security.Hash(password)
+	ret[protocol.Nickname] = nickname
+	return protocol.Request{
+		Source: "REGISTER",
+		Data:   ret,
+	}
+}
+
+func processRegRes(w http.ResponseWriter, r *http.Request, res protocol.Response) {
+	switch res.Code {
+	case protocol.INSERT_SUCCESS:
+		params := url.Values{
+			"desc": {"Account created!"},
+		}
+		http.Redirect(w, r, "/login?"+params.Encode(), http.StatusSeeOther)
+	case protocol.INSERT_FAILED:
+		params := url.Values{
+			"desc": {"Account creation failed, please try again!"},
+		}
+		http.Redirect(w, r, "/register?"+params.Encode(), http.StatusSeeOther)
+	}
 }
 
 func rootHandler(w http.ResponseWriter, r *http.Request) {
