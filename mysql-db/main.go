@@ -11,8 +11,7 @@ var db *sql.DB
 
 // Converts sql return statement to slice of User
 func rowsToUser(rows *sql.Rows) []protocol.User {
-	const DEFAULT_SIZE = 10
-	ret := make([]protocol.User, DEFAULT_SIZE)
+	var ret []protocol.User
 	for rows.Next() {
 		var user protocol.User
 		err := rows.Scan(&user.Nickname, &user.Username, &user.PwHash, &user.ProfilePic)

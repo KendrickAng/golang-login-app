@@ -4,6 +4,7 @@ import (
 	"example.com/kendrick/mysql-db"
 	"example.com/kendrick/security"
 	"github.com/satori/uuid"
+	"log"
 	"net/http"
 )
 
@@ -44,5 +45,7 @@ func IsValidPassword(username string, pw string) bool {
 func CreateSession(username string) string {
 	id := uuid.NewV4().String()
 	dbSessions[id] = username
+	log.Println("Sessions DB: ")
+	log.Println(dbSessions)
 	return id
 }

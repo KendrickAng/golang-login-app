@@ -32,6 +32,7 @@ func handleLoginReq(req protocol.Request) protocol.Response {
 	data := req.Data
 	username := data[protocol.Username]
 	pw := data[protocol.PwPlain]
+	log.Println(username, pw)
 
 	if auth.IsValidPassword(username, pw) {
 		log.Println("Valid password")
