@@ -59,12 +59,9 @@ func GetSessionUser(req *http.Request) string {
 	return dbSessions[cookie.Value]
 }
 
-func DelSessionUser(req *http.Request) {
-	cookie, err := req.Cookie(SESS_COOKIE_NAME)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	log.Println("Session " + cookie.Value + " Deleted. DB: ")
-	log.Println(dbSessions)
-	delete(dbSessions, cookie.Value)
+// Deletes the session associated with this session id
+func DelSessionUser(sid string) string {
+	username := dbSessions[sid]
+	delete(dbSessions, sid)
+	return username
 }

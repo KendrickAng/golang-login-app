@@ -64,7 +64,6 @@ func handleEditReq(req protocol.Request) protocol.Response {
 	log.Println("Handling Edit Req: ", username, nickname, picPath)
 
 	// Find the username, and replace the relevant details
-	// TODO
 	numRows := database.EditUser(username, nickname, picPath)
 	if numRows == 1 {
 		return protocol.Response{
@@ -80,6 +79,19 @@ func handleEditReq(req protocol.Request) protocol.Response {
 	}
 }
 
+func handleLogoutReq(req protocol.Request) protocol.Response {
+	data := req.Data
+	sid := data[protocol.SessionId]
+	log.Println("Handling Logout Req: ", sid)
+
+	username := auth.DelSessionUser(sid)
+	return protocol.Response{
+		Code:        protocol.LOGOUT_SUCCESS,
+		Description: "Logged out: " + sid + " " + username,
+		Data:        nil,
+	}
+}
+
 // Invokes the relevant request handler
 func handleData(req protocol.Request) protocol.Response {
 	switch req.Source {
@@ -88,7 +100,7 @@ func handleData(req protocol.Request) protocol.Response {
 	case "EDIT":
 		return handleEditReq(req)
 	case "LOGOUT":
-
+		return handleLogoutReq(req)
 	default:
 		log.Fatalln("Unknown request source " + req.Source)
 	}

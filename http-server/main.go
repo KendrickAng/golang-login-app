@@ -202,6 +202,7 @@ func registerHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func createUser(r *http.Request) {
+	// TODO
 }
 
 func rootHandler(w http.ResponseWriter, r *http.Request) {
@@ -233,17 +234,19 @@ func createLogoutReq(r *http.Request) protocol.Request {
 	}
 }
 
-func processLogoutRes(w http.ResponseWriter, r *http.Request, response protocol.Response) {
-	// TODO
-	// delete cookie
-	c, _ := r.Cookie(auth.SESS_COOKIE_NAME)
-	c = &http.Cookie{
-		Name:   auth.SESS_COOKIE_NAME,
-		Value:  "",
-		MaxAge: -1,
+func processLogoutRes(w http.ResponseWriter, r *http.Request, res protocol.Response) {
+	switch res.Code {
+	case protocol.LOGOUT_SUCCESS:
+		// delete cookie
+		c, _ := r.Cookie(auth.SESS_COOKIE_NAME)
+		c = &http.Cookie{
+			Name:   auth.SESS_COOKIE_NAME,
+			Value:  "",
+			MaxAge: -1,
+		}
+		http.SetCookie(w, c)
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
 	}
-	http.SetCookie(w, c)
-	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 
 func init() {

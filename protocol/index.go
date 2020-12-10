@@ -37,10 +37,11 @@ type Response struct {
 
 // Login constants
 const (
-	NO_SUCH_USER = 100
-	USER_FOUND   = 101
-	EDIT_SUCCESS = 200
-	EDIT_FAILED  = 201
+	NO_SUCH_USER   = 100
+	USER_FOUND     = 101
+	EDIT_SUCCESS   = 200
+	EDIT_FAILED    = 201
+	LOGOUT_SUCCESS = 300
 )
 
 // Creates an encoded POST request (to be sent to server)
