@@ -14,7 +14,7 @@ func Hash(pw string) string {
 	return string(hash)
 }
 
-// Checks that a password hashes to given hash, returns true if equal
+// Checks that a plaintext password hashes to given hash, returns true if equal
 func ComparePwHash(pw string, hash string) bool {
 	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(pw))
 	if err != nil {

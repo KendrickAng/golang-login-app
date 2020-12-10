@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/gob"
+	"encoding/json"
 	"log"
 )
 
 const (
 	Username   = "username"
 	Nickname   = "nickname"
+	PwPlain    = "password"
 	PwHash     = "pwhash"
 	ProfilePic = "profilepic"
 )
@@ -21,7 +23,42 @@ type User struct {
 	ProfilePic string
 }
 
-func Marshall(user User) string {
+type Request struct {
+	Method string // no need
+	Source string
+	Data   map[string]string
+}
+
+type Response struct {
+	Code        int
+	Description string
+	Data        map[string]string
+}
+
+// Login constants
+const (
+	NO_SUCH_USER = 100
+	USER_FOUND   = 101
+)
+
+// Creates an encoded POST request (to be sent to server)
+func CreateRequest(req Request) []byte {
+	b, err := json.Marshal(req)
+	if err != nil {
+		log.Panicln(err)
+	}
+	return b
+}
+
+func CreateResponse(res Response) []byte {
+	b, err := json.Marshal(res)
+	if err != nil {
+		log.Panicln(err)
+	}
+	return b
+}
+
+func encode(user User) string {
 	bytes := bytes.Buffer{}
 	enc := gob.NewEncoder(&bytes)
 	err := enc.Encode(user)
@@ -31,7 +68,7 @@ func Marshall(user User) string {
 	return base64.StdEncoding.EncodeToString(bytes.Bytes())
 }
 
-func Unmarshall(str string) User {
+func decode(str string) User {
 	u := User{}
 	by, err := base64.StdEncoding.DecodeString(str)
 	if err != nil {
@@ -45,11 +82,6 @@ func Unmarshall(str string) User {
 		log.Panicln("Failed gob decode: ", err)
 	}
 	return u
-}
-
-// Creates a formatted POST request (to be sent to server)
-func CreatePost(data map[string]string) {
-
 }
 
 // Registers the user struct for use. Must be called first.

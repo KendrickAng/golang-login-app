@@ -1,4 +1,4 @@
-package main
+package database
 
 import (
 	"database/sql"
@@ -9,12 +9,36 @@ import (
 
 var db *sql.DB
 
-func getUsers() *sql.Rows {
+// Converts sql return statement to slice of User
+func rowsToUser(rows *sql.Rows) []protocol.User {
+	const DEFAULT_SIZE = 10
+	ret := make([]protocol.User, DEFAULT_SIZE)
+	for rows.Next() {
+		var user protocol.User
+		err := rows.Scan(&user.Nickname, &user.Username, &user.PwHash, &user.ProfilePic)
+		if err != nil {
+			log.Panicln(err)
+		}
+		ret = append(ret, user)
+	}
+	return ret
+}
+
+func GetUsers() []protocol.User {
 	res, err := db.Query("SELECT * FROM users")
 	if err != nil {
 		log.Panicln(err)
 	}
-	return res
+	return rowsToUser(res)
+}
+
+// Retrieves a user based on key (his unique username)
+func GetUser(key string) []protocol.User {
+	res, err := db.Query("SELECT * FROM users WHERE username = ?", key)
+	if err != nil {
+		log.Panicln(err)
+	}
+	return rowsToUser(res)
 }
 
 func connect() *sql.DB {
@@ -26,17 +50,10 @@ func connect() *sql.DB {
 	return database
 }
 
-func main() {
+func Connect() {
 	db = connect()
-	defer db.Close()
+}
 
-	rows := getUsers()
-	for rows.Next() {
-		var user protocol.User
-		err := rows.Scan(&user.Nickname, &user.Username, &user.PwHash, &user.ProfilePic)
-		if err != nil {
-			log.Panicln(err)
-		}
-		log.Println(user)
-	}
+func Disconnect() {
+	_ = db.Close()
 }
