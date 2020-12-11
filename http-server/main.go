@@ -25,6 +25,9 @@ const (
 
 var templates *template.Template
 
+// ********************************
+// *********** COMMON *************
+// ********************************
 func renderTemplate(w http.ResponseWriter, tmpl string, data interface{}) {
 	file := fmt.Sprintf("%s.html", tmpl)
 	err := templates.ExecuteTemplate(w, file, data)
@@ -33,6 +36,45 @@ func renderTemplate(w http.ResponseWriter, tmpl string, data interface{}) {
 	}
 }
 
+func sendReq(data protocol.Request) net.Conn {
+	conn, err := net.Dial("tcp", "localhost:8081")
+	if err != nil {
+		log.Fatalln(err)
+	}
+	req := protocol.CreateRequest(data)
+	log.Println("Sending request: " + string(req))
+	_, err = conn.Write(req)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	return conn
+}
+
+func receiveRes(w http.ResponseWriter, conn net.Conn) protocol.Response {
+	err := conn.SetDeadline(time.Now().Add(TIMEOUT))
+	if err != nil {
+		log.Panicln(err)
+	}
+	dec := json.NewDecoder(conn)
+	var res protocol.Response
+	err = dec.Decode(&res)
+	if err == io.EOF {
+		log.Println("EOF when reading response")
+	} else if errors.Is(err, os.ErrDeadlineExceeded) {
+		http.Error(w, "TCP Server timeout", http.StatusInternalServerError)
+		return protocol.Response{}
+	} else if err != nil {
+		log.Fatalln(err)
+	}
+	log.Print("TCP Server response: ")
+	log.Println(res)
+	err = conn.SetDeadline(time.Time{})
+	return res
+}
+
+// *******************************
+// *********** LOGIN *************
+// *******************************
 func createLoginReq(r *http.Request) protocol.Request {
 	username := r.FormValue("username")
 	password := r.FormValue("password")
@@ -85,6 +127,9 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// ******************************
+// *********** EDIT *************
+// ******************************
 func edit(w http.ResponseWriter, r *http.Request) {
 	req := createEditReq(r)
 	conn := sendReq(req)
@@ -123,42 +168,6 @@ func createEditReq(r *http.Request) protocol.Request {
 	}
 }
 
-func sendReq(data protocol.Request) net.Conn {
-	conn, err := net.Dial("tcp", "localhost:8081")
-	if err != nil {
-		log.Fatalln(err)
-	}
-	req := protocol.CreateRequest(data)
-	log.Println("Sending request: " + string(req))
-	_, err = conn.Write(req)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	return conn
-}
-
-func receiveRes(w http.ResponseWriter, conn net.Conn) protocol.Response {
-	err := conn.SetDeadline(time.Now().Add(TIMEOUT))
-	if err != nil {
-		log.Panicln(err)
-	}
-	dec := json.NewDecoder(conn)
-	var res protocol.Response
-	err = dec.Decode(&res)
-	if err == io.EOF {
-		log.Println("EOF when reading response")
-	} else if errors.Is(err, os.ErrDeadlineExceeded) {
-		http.Error(w, "TCP Server timeout", http.StatusInternalServerError)
-		return protocol.Response{}
-	} else if err != nil {
-		log.Fatalln(err)
-	}
-	log.Print("TCP Server response: ")
-	log.Println(res)
-	err = conn.SetDeadline(time.Time{})
-	return res
-}
-
 func processEditRes(w http.ResponseWriter, r *http.Request, res protocol.Response) {
 	switch res.Code {
 	case protocol.EDIT_SUCCESS:
@@ -191,6 +200,9 @@ func editHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// **********************************
+// *********** REGISTER *************
+// **********************************
 func registerHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
@@ -239,6 +251,9 @@ func processRegRes(w http.ResponseWriter, r *http.Request, res protocol.Response
 	}
 }
 
+// ***************************************
+// *********** HTTP HANDLERS *************
+// ***************************************
 func rootHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/login", http.StatusMovedPermanently)
 }

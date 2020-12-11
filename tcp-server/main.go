@@ -10,6 +10,33 @@ import (
 	"net"
 )
 
+// ********************************
+// *********** COMMON *************
+// ********************************
+func handleConn(conn net.Conn) {
+	defer conn.Close()
+	message := receiveData(conn)
+	response := handleData(message)
+	sendResponse(response, conn)
+}
+
+// Invokes the relevant request handler
+func handleData(req protocol.Request) protocol.Response {
+	switch req.Source {
+	case "LOGIN":
+		return handleLoginReq(req)
+	case "EDIT":
+		return handleEditReq(req)
+	case "LOGOUT":
+		return handleLogoutReq(req)
+	case "REGISTER":
+		return handleRegReq(req)
+	default:
+		log.Fatalln("Unknown request source " + req.Source)
+	}
+	return protocol.Response{}
+}
+
 func receiveData(conn net.Conn) protocol.Request {
 	dec := json.NewDecoder(conn)
 	var m protocol.Request
@@ -111,30 +138,6 @@ func handleRegReq(req protocol.Request) protocol.Response {
 		Description: "INSERT failed: " + username + " " + password + " " + nickname,
 		Data:        nil,
 	}
-}
-
-// Invokes the relevant request handler
-func handleData(req protocol.Request) protocol.Response {
-	switch req.Source {
-	case "LOGIN":
-		return handleLoginReq(req)
-	case "EDIT":
-		return handleEditReq(req)
-	case "LOGOUT":
-		return handleLogoutReq(req)
-	case "REGISTER":
-		return handleRegReq(req)
-	default:
-		log.Fatalln("Unknown request source " + req.Source)
-	}
-	return protocol.Response{}
-}
-
-func handleConn(conn net.Conn) {
-	defer conn.Close()
-	message := receiveData(conn)
-	response := handleData(message)
-	sendResponse(response, conn)
 }
 
 func main() {
