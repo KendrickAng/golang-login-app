@@ -3,11 +3,17 @@ package database
 import (
 	"database/sql"
 	"example.com/kendrick/protocol"
+	"github.com/go-sql-driver/mysql"
 	_ "github.com/go-sql-driver/mysql"
 	"log"
 )
 
 var db *sql.DB
+
+// https://dev.mysql.com/doc/mysql-errors/8.0/en/server-error-reference.html
+const (
+	DUP_PKEY = 1062
+)
 
 // Converts sql return statement to slice of User
 func rowsToUser(rows *sql.Rows) []protocol.User {
@@ -49,6 +55,10 @@ func CreateUser(username string, pwHash string, nickname string) int64 {
 	ensureConnected(db)
 	result, err := db.Exec("INSERT INTO users VALUES (?, ?, ?, ?)", username, nickname, pwHash, sql.NullString{})
 	if err != nil {
+		// duplicate username pkey
+		if me, ok := err.(*mysql.MySQLError); ok && me.Number == DUP_PKEY {
+			return 0
+		}
 		log.Panicln(err)
 	}
 	log.Println("INSERT: username: " + username + " | nickname: " + nickname + " | pwHash " + pwHash)

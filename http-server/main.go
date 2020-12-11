@@ -92,7 +92,8 @@ func createLoginReq(r *http.Request) protocol.Request {
 func processLoginRes(w http.ResponseWriter, r *http.Request, res protocol.Response) {
 	common.Display("PROCESSING LOGIN RES: ", res)
 	if res.Code != protocol.USER_FOUND {
-		http.Redirect(w, r, "/register", http.StatusSeeOther)
+		qs := common.QueryString("No such account, please register first!")
+		http.Redirect(w, r, "/register"+qs, http.StatusSeeOther)
 		return
 	}
 	username := res.Data[protocol.Username]
@@ -101,7 +102,8 @@ func processLoginRes(w http.ResponseWriter, r *http.Request, res protocol.Respon
 		Name:  auth.SESS_COOKIE_NAME,
 		Value: sid,
 	})
-	http.Redirect(w, r, "/edit", http.StatusSeeOther)
+	qs := common.QueryString("Welcome, " + username)
+	http.Redirect(w, r, "/edit"+qs, http.StatusSeeOther)
 }
 
 // Main handler called when logging in
@@ -121,7 +123,8 @@ func login(w http.ResponseWriter, r *http.Request) {
 func loginHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		renderTemplate(w, "login", nil)
+		desc := r.URL.Query().Get("desc")
+		renderTemplate(w, "login", desc)
 	case http.MethodPost:
 		login(w, r)
 	default:
@@ -176,15 +179,11 @@ func processEditRes(w http.ResponseWriter, r *http.Request, res protocol.Respons
 	common.Display("PROCESSING EDIT RES: ", res)
 	switch res.Code {
 	case protocol.EDIT_SUCCESS:
-		params := url.Values{
-			"desc": {"Edit Success!"},
-		}
-		http.Redirect(w, r, "/edit?"+params.Encode(), http.StatusSeeOther)
+		qs := common.QueryString("Edit Success!")
+		http.Redirect(w, r, "/edit"+qs, http.StatusSeeOther)
 	case protocol.EDIT_FAILED:
-		params := url.Values{
-			"desc": {"Edit Failed..."},
-		}
-		http.Redirect(w, r, "/edit?"+params.Encode(), http.StatusSeeOther)
+		qs := common.QueryString("Edit Failed...")
+		http.Redirect(w, r, "/edit"+qs, http.StatusSeeOther)
 	}
 }
 
@@ -196,7 +195,6 @@ func editHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		desc := r.URL.Query().Get("desc")
-		log.Println("Rendering edit.html with desc: ", desc)
 		renderTemplate(w, "edit", desc)
 	case http.MethodPost:
 		edit(w, r)
@@ -211,7 +209,8 @@ func editHandler(w http.ResponseWriter, r *http.Request) {
 func registerHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		renderTemplate(w, "register", nil)
+		desc := r.URL.Query().Get("desc")
+		renderTemplate(w, "register", desc)
 	case http.MethodPost:
 		create(w, r)
 	default:
