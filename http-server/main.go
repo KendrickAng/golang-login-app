@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"example.com/kendrick/auth"
+	"example.com/kendrick/common"
 	"example.com/kendrick/http-server/fileio"
 	"example.com/kendrick/protocol"
 	"example.com/kendrick/security"
@@ -42,7 +43,7 @@ func sendReq(data protocol.Request) net.Conn {
 		log.Fatalln(err)
 	}
 	req := protocol.CreateRequest(data)
-	log.Println("Sending request: " + string(req))
+	common.Display("SENDING REQUEST: ", string(req))
 	_, err = conn.Write(req)
 	if err != nil {
 		log.Fatalln(err)
@@ -59,15 +60,14 @@ func receiveRes(w http.ResponseWriter, conn net.Conn) protocol.Response {
 	var res protocol.Response
 	err = dec.Decode(&res)
 	if err == io.EOF {
-		log.Println("EOF when reading response")
+		common.Display("EOF WHEN READING RESPONSE", nil)
 	} else if errors.Is(err, os.ErrDeadlineExceeded) {
 		http.Error(w, "TCP Server timeout", http.StatusInternalServerError)
 		return protocol.Response{}
 	} else if err != nil {
 		log.Fatalln(err)
 	}
-	log.Print("TCP Server response: ")
-	log.Println(res)
+	common.Display("RECEIVED RESPONSE: ", res)
 	err = conn.SetDeadline(time.Time{})
 	return res
 }
@@ -81,13 +81,16 @@ func createLoginReq(r *http.Request) protocol.Request {
 	ret := make(map[string]string)
 	ret[protocol.Username] = username
 	ret[protocol.PwPlain] = password
-	return protocol.Request{
+	req := protocol.Request{
 		Source: "LOGIN",
 		Data:   ret,
 	}
+	common.Display("CREATED LOGIN REQ: ", req)
+	return req
 }
 
 func processLoginRes(w http.ResponseWriter, r *http.Request, res protocol.Response) {
+	common.Display("PROCESSING LOGIN RES: ", res)
 	if res.Code != protocol.USER_FOUND {
 		http.Redirect(w, r, "/register", http.StatusSeeOther)
 		return
@@ -98,7 +101,6 @@ func processLoginRes(w http.ResponseWriter, r *http.Request, res protocol.Respon
 		Name:  auth.SESS_COOKIE_NAME,
 		Value: sid,
 	})
-	log.Println("Created session: " + username + " " + sid)
 	http.Redirect(w, r, "/edit", http.StatusSeeOther)
 }
 
@@ -162,13 +164,16 @@ func createEditReq(r *http.Request) protocol.Request {
 	ret[protocol.Nickname] = nickname
 	ret[protocol.ProfilePic] = imgPath
 	ret[protocol.Username] = username
-	return protocol.Request{
+	req := protocol.Request{
 		Source: "EDIT",
 		Data:   ret,
 	}
+	common.Display("CREATED EDIT REQUEST: ", req)
+	return req
 }
 
 func processEditRes(w http.ResponseWriter, r *http.Request, res protocol.Response) {
+	common.Display("PROCESSING EDIT RES: ", res)
 	switch res.Code {
 	case protocol.EDIT_SUCCESS:
 		params := url.Values{
@@ -230,13 +235,16 @@ func createRegReq(r *http.Request) protocol.Request {
 	ret[protocol.Username] = username
 	ret[protocol.PwHash] = security.Hash(password)
 	ret[protocol.Nickname] = nickname
-	return protocol.Request{
+	req := protocol.Request{
 		Source: "REGISTER",
 		Data:   ret,
 	}
+	common.Display("CREATED REGISTER REQ: ", req)
+	return req
 }
 
 func processRegRes(w http.ResponseWriter, r *http.Request, res protocol.Response) {
+	common.Display("PROCESSING REGISTER RESPONSE: ", res)
 	switch res.Code {
 	case protocol.INSERT_SUCCESS:
 		params := url.Values{
@@ -277,13 +285,16 @@ func createLogoutReq(r *http.Request) protocol.Request {
 	c, _ := r.Cookie(auth.SESS_COOKIE_NAME)
 	ret := make(map[string]string)
 	ret[protocol.SessionId] = c.Value
-	return protocol.Request{
+	req := protocol.Request{
 		Source: "LOGOUT",
 		Data:   ret,
 	}
+	common.Display("CREATED LOGOUT REQUEST: ", req)
+	return req
 }
 
 func processLogoutRes(w http.ResponseWriter, r *http.Request, res protocol.Response) {
+	common.Display("PROCESSING LOGOUT RESPONSE: ", res)
 	switch res.Code {
 	case protocol.LOGOUT_SUCCESS:
 		// delete cookie

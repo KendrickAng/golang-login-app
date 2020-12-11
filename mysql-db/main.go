@@ -60,7 +60,7 @@ func CreateUser(username string, pwHash string, nickname string) int64 {
 // Retrieves a user based on key (his unique username)
 func GetUser(key string) []protocol.User {
 	ensureConnected(db)
-	res, err := db.Query("SELECT * FROM users WHERE username = ?", key)
+	res, err := db.Query("SELECT username, nickname, pw_hash, COALESCE(profile_pic, '') FROM users WHERE username = ?", key)
 	if err != nil {
 		log.Panicln(err)
 	}
