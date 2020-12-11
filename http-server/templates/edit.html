@@ -7,11 +7,11 @@
 <form action="/edit" enctype="multipart/form-data" method="POST">
     <div>
         <label for="nickname">New Nickname</label>
-        <input type="text" name="nickname" id="nickname">
+        <input type="text" name="nickname" id="nickname" maxlength="45" required>
     </div>
     <div>
         <label for="pic">New Profile Picture</label>
-        <input type="file" accept="image/png, image/jpg" name="pic" id="pic">
+        <input type="file" accept="image/png, image/jpg" name="pic" id="pic" required>
     </div>
     <button type="submit">Submit</button>
 </form>

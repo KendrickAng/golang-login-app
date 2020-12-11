@@ -1,33 +1,57 @@
 package fileio
 
 import (
-	"io/ioutil"
+	"image"
+	"image/jpeg"
+	_ "image/jpeg"
+	_ "image/png"
+	"log"
 	"mime/multipart"
 	"os"
+	"path"
 	"path/filepath"
+	"runtime"
 )
 
-// saves the image to the /assets/ directory. Returns relative filepath if success
-func ImageUpload(file multipart.File, suffix string) (string, error) {
-	// read
-	bytes, err := ioutil.ReadAll(file)
-	if err != nil {
-		return "", err
-	}
-
-	// create new file, name is based on password hash (unique)
-	path := filepath.Join("../assets/", suffix)
-	dest, err := os.Create(path)
-	if err != nil {
-		return "", err
-	}
+// saves the image to the http-server/assets/ directory. Returns relative filepath if success
+func ImageUpload(file multipart.File, suffix string) string {
+	img := fileToImage(file)
+	pathsuffix, dest := createAssetsFile(suffix)
 	defer dest.Close()
+	write(img, dest)
 
-	// write
-	_, err = dest.Write(bytes)
+	return pathsuffix
+}
+
+// convert to image.Image
+func fileToImage(file multipart.File) image.Image {
+	img, _, err := image.Decode(file)
 	if err != nil {
-		return "", err
+		log.Fatalln(err)
 	}
+	return img
+}
 
-	return path, nil
+func createAssetsFile(suffix string) (string, *os.File) {
+	pathsuffix := "/assets/" + suffix + ".jpg"
+	pathname := filepath.Join(rootDir(), pathsuffix)
+	dest, err := os.Create(pathname)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	return pathsuffix, dest
+}
+
+func write(img image.Image, dest *os.File) {
+	err := jpeg.Encode(dest, img, nil)
+	if err != nil {
+		log.Fatalln(err)
+	}
+}
+
+// gets the root directory where main.go is running
+func rootDir() string {
+	_, b, _, _ := runtime.Caller(0)
+	d := path.Join(path.Dir(b))
+	return filepath.Dir(d)
 }

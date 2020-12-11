@@ -17,11 +17,13 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"time"
 )
 
 const (
-	TIMEOUT = time.Second * 5
+	TIMEOUT     = time.Second * 5
+	IMG_MAXSIZE = 1 << 12 // 2^12
 )
 
 var templates *template.Template
@@ -136,31 +138,37 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 // *********** EDIT *************
 // ******************************
 func edit(w http.ResponseWriter, r *http.Request) {
-	req := createEditReq(r)
+	req, err := createEditReq(r)
+	if err != nil {
+		common.Display(err.Error())
+		http.Redirect(w, r, "/edit"+common.QueryString(err.Error()), http.StatusSeeOther)
+		return
+	}
 	conn := sendReq(req)
 	res := receiveRes(w, conn)
 	processEditRes(w, r, res)
 	conn.Close()
 }
 
-func createEditReq(r *http.Request) protocol.Request {
-	// max size 1MB
-	r.ParseMultipartForm(1 << 20)
-
+func createEditReq(r *http.Request) (protocol.Request, error) {
 	// retrieve form values
 	nickname := r.FormValue("nickname")
-	file, _, err := r.FormFile("pic")
+	file, header, err := r.FormFile("pic")
 	if err != nil {
 		log.Fatalln(err)
+	}
+	// enforce max size
+	if header.Size > IMG_MAXSIZE {
+		err := errors.New("Image too large: maximum " + strconv.Itoa(IMG_MAXSIZE) + " bytes.")
+		return protocol.Request{}, err
 	}
 	defer file.Close()
+	common.Display("FILE INFORMATION: ", header)
 
-	// stored image persistently
+	// store image persistently
 	username := auth.GetSessionUser(r)
-	imgPath, err := fileio.ImageUpload(file, username)
-	if err != nil {
-		log.Fatalln(err)
-	}
+	imgPath := fileio.ImageUpload(file, username)
+	common.Display("PROFILE PICTURE UPLOADED: " + imgPath)
 
 	// create return data
 	ret := make(map[string]string)
@@ -172,7 +180,7 @@ func createEditReq(r *http.Request) protocol.Request {
 		Data:   ret,
 	}
 	common.Display("CREATED EDIT REQUEST: ", req)
-	return req
+	return req, nil
 }
 
 func processEditRes(w http.ResponseWriter, r *http.Request, res protocol.Response) {
