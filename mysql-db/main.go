@@ -3,12 +3,14 @@ package database
 import (
 	"database/sql"
 	"example.com/kendrick/protocol"
+	"example.com/kendrick/tcp-server/fileio"
 	"github.com/go-sql-driver/mysql"
 	_ "github.com/go-sql-driver/mysql"
 	"log"
 )
 
 var db *sql.DB
+var pw string = ""
 
 // https://dev.mysql.com/doc/mysql-errors/8.0/en/server-error-reference.html
 const (
@@ -79,7 +81,8 @@ func GetUser(key string) []protocol.User {
 
 func connect() {
 	var err error
-	db, err = sql.Open("mysql", "root:MonsterHunter!@@tcp(localhost:3306)/users_db")
+	readPw()
+	db, err = sql.Open("mysql", "root:"+pw+"@tcp(localhost:3306)/users_db")
 	if err != nil {
 		log.Panicln(err.Error())
 	}
@@ -88,6 +91,12 @@ func connect() {
 
 func disconnect() {
 	_ = db.Close()
+}
+
+func readPw() {
+	if pw == "" {
+		pw = fileio.ReadPw()
+	}
 }
 
 func ensureConnected(ptr *sql.DB) {

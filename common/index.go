@@ -14,7 +14,7 @@ func Display(desc string, data ...interface{}) {
 	if len(desc) > 0 {
 		log.Println(LOG_PREFIX + desc + LOG_SUFFIX)
 	}
-	if data != nil {
+	if len(data) > 0 && data[0] != nil {
 		log.Println(data...)
 	}
 }
