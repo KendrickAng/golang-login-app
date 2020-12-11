@@ -4,13 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="23ff0517-4c5e-4cfa-9cb8-ff9e46034cda" name="Default Changelist" comment="">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/http-server/fileio/index.go" beforeDir="false" afterPath="$PROJECT_DIR$/http-server/fileio/index.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/http-server/main.go" beforeDir="false" afterPath="$PROJECT_DIR$/http-server/main.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/http-server/templates/edit.html" beforeDir="false" afterPath="$PROJECT_DIR$/http-server/templates/edit.html" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/http-server/templates/login.html" beforeDir="false" afterPath="$PROJECT_DIR$/http-server/templates/login.html" afterDir="false" />
-    </list>
+    <list default="true" id="23ff0517-4c5e-4cfa-9cb8-ff9e46034cda" name="Default Changelist" comment="" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -85,7 +79,9 @@
     <MESSAGE value="refactor logging" />
     <MESSAGE value="bugfix: handle duplicate username when creating account" />
     <MESSAGE value="security: remove password from mysql-db/main.go" />
-    <option name="LAST_COMMIT_MESSAGE" value="security: remove password from mysql-db/main.go" />
+    <MESSAGE value="feature: implement file size limit of 4KB" />
+    <MESSAGE value="feature: implement file size limit of 4KB&#10;- frontend input maxsize of 45 characters" />
+    <option name="LAST_COMMIT_MESSAGE" value="feature: implement file size limit of 4KB&#10;- frontend input maxsize of 45 characters" />
   </component>
   <component name="VgoProject">
     <integration-enabled>true</integration-enabled>
