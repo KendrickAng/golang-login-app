@@ -32,6 +32,8 @@ func handleData(req protocol.Request) protocol.Response {
 		return handleLogoutReq(req)
 	case "REGISTER":
 		return handleRegReq(req)
+	case "HOME":
+		return handleHomeReq(req)
 	default:
 		log.Fatalln("Unknown request source " + req.Source)
 	}
@@ -67,8 +69,10 @@ func handleLoginReq(req protocol.Request) protocol.Response {
 	common.Display("HANDLING LOGIN REQ: ", data)
 
 	if auth.IsValidPassword(username, pw) {
+		sid := auth.CreateSession(username)
 		data := make(map[string]string)
 		data[protocol.Username] = username
+		data[protocol.SessionId] = sid
 		res := protocol.Response{
 			Code:        protocol.USER_FOUND,
 			Description: "Login for " + username + " succeeded",
@@ -88,13 +92,14 @@ func handleLoginReq(req protocol.Request) protocol.Response {
 
 func handleEditReq(req protocol.Request) protocol.Response {
 	data := req.Data
-	username := data[protocol.Username]
+	sid := data[protocol.SessionId]
 	nickname := data[protocol.Nickname]
 	picPath := data[protocol.ProfilePic]
+	username := auth.GetSessionUser(sid)
 	common.Display("HANDLING EDIT REQ: ", data)
 
 	// Find the username, and replace the relevant details
-	numRows := database.EditUser(username, nickname, picPath)
+	numRows := database.UpdateUser(username, nickname, picPath)
 	if numRows == 1 {
 		res := protocol.Response{
 			Code:        protocol.EDIT_SUCCESS,
@@ -135,7 +140,7 @@ func handleRegReq(req protocol.Request) protocol.Response {
 	password := data[protocol.PwHash]
 	common.Display("HANDLING REGISTER REQ: ", data)
 
-	numRows := database.CreateUser(username, password, nickname)
+	numRows := database.InsertUser(username, password, nickname)
 	if numRows == 1 {
 		res := protocol.Response{
 			Code:        protocol.INSERT_SUCCESS,
@@ -152,6 +157,42 @@ func handleRegReq(req protocol.Request) protocol.Response {
 	}
 	common.Display("INVALID REGISTER, SENDING RESPONSE: ", res)
 	return res
+}
+
+func handleHomeReq(req protocol.Request) protocol.Response {
+	data := req.Data
+	sid := data[protocol.SessionId]
+	common.Display("HANDLING HOME REQ: ", data)
+
+	username := auth.GetSessionUser(sid)
+	log.Println(sid, username)
+	rows := database.GetUser(username)
+	log.Println(rows)
+	if len(rows) == 1 {
+		ret := make(map[string]string)
+		ret[protocol.Username] = rows[0].Username
+		ret[protocol.Nickname] = rows[0].Nickname
+		ret[protocol.ProfilePic] = rows[0].ProfilePic
+		response := protocol.Response{
+			Code:        protocol.USER_FOUND,
+			Description: "User " + username + " found!",
+			Data:        ret,
+		}
+		common.Display("VALID HOME, SENDING RESPONSE: ", response)
+		return response
+	}
+	response := protocol.Response{
+		Code:        protocol.NO_SUCH_USER,
+		Description: "User " + username + " not found...",
+		Data:        nil,
+	}
+	common.Display("INVALID HOME, SENDING RESPONSE: ", response)
+	return response
+}
+
+func init() {
+	database.Connect()
+	database.DeleteSessions()
 }
 
 func main() {

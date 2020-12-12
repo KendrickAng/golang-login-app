@@ -4,31 +4,32 @@ import (
 	"example.com/kendrick/mysql-db"
 	"example.com/kendrick/security"
 	"github.com/satori/uuid"
-	"log"
-	"net/http"
 )
 
 const (
 	SESS_COOKIE_NAME = "session"
 )
 
-var dbSessions = make(map[string]string)
-
 /*
 This package handles authentication, session creation/deletion, cookie creation/deletion, uuid creation.
 It also queries the SQL database, if needed.
 */
-func IsLoggedIn(req *http.Request) bool {
-	cookie, err := req.Cookie(SESS_COOKIE_NAME)
-	if err != nil {
+func IsLoggedIn(uuid string) bool {
+	if len(uuid) == 0 {
 		return false
 	}
-	user := dbSessions[cookie.Value]
-	return isValidUser(user)
+	users := database.GetSession(uuid)
+	if len(users) != 1 {
+		return false
+	}
+	return isValidUser(users[0].Username)
 }
 
 // Returns true if the username exists in the SQL DB.
 func isValidUser(username string) bool {
+	if len(username) == 0 {
+		return false
+	}
 	users := database.GetUser(username)
 	return len(users) == 1
 }
@@ -44,24 +45,22 @@ func IsValidPassword(username string, pw string) bool {
 // generates a new uuid for a username, then returns the uuid.
 func CreateSession(username string) string {
 	id := uuid.NewV4().String()
-	dbSessions[id] = username
-	log.Println("Session " + id + " Created. DB: ")
-	log.Println(dbSessions)
+	database.InsertSession(id, username)
 	return id
 }
 
-// returns username for a given session uuid, or nil if key doesn't exist
-func GetSessionUser(req *http.Request) string {
-	cookie, err := req.Cookie(SESS_COOKIE_NAME)
-	if err != nil {
+// returns username for a given session uuid
+func GetSessionUser(sid string) string {
+	users := database.GetSession(sid)
+	if len(users) != 1 {
 		return ""
 	}
-	return dbSessions[cookie.Value]
+	return users[0].Username
 }
 
 // Deletes the session associated with this session id
 func DelSessionUser(sid string) string {
-	username := dbSessions[sid]
-	delete(dbSessions, sid)
+	username := GetSessionUser(sid)
+	database.DeleteSession(sid)
 	return username
 }

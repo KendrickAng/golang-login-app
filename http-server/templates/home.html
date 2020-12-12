@@ -1,0 +1,9 @@
+<h1>Welcome, {{index . "nickname"}}.</h1>
+
+<h1>Profile information</h1>
+<p>Nickname: {{index . "nickname"}}</p>
+<p>Username: {{index . "username"}}</p>
+<img src='{{index . "profilepic"}}'  alt="profile picture"/>
+
+<a href="/edit">Edit</a>
+<a href="/logout">Logout</a>

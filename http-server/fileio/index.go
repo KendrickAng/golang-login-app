@@ -23,6 +23,11 @@ func ImageUpload(file multipart.File, suffix string) string {
 	return pathsuffix
 }
 
+// returns an absolute image path given User.ProfilePic.
+func ImagePath(suffix string) string {
+	return rootDir() + suffix
+}
+
 // convert to image.Image
 func fileToImage(file multipart.File) image.Image {
 	img, _, err := image.Decode(file)

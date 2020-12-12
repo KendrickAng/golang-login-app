@@ -4,7 +4,17 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="23ff0517-4c5e-4cfa-9cb8-ff9e46034cda" name="Default Changelist" comment="" />
+    <list default="true" id="23ff0517-4c5e-4cfa-9cb8-ff9e46034cda" name="Default Changelist" comment="">
+      <change afterPath="$PROJECT_DIR$/http-server/templates/home.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/auth/index.go" beforeDir="false" afterPath="$PROJECT_DIR$/auth/index.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/http-server/fileio/index.go" beforeDir="false" afterPath="$PROJECT_DIR$/http-server/fileio/index.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/http-server/main.go" beforeDir="false" afterPath="$PROJECT_DIR$/http-server/main.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/http-server/templates/edit.html" beforeDir="false" afterPath="$PROJECT_DIR$/http-server/templates/edit.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mysql-db/main.go" beforeDir="false" afterPath="$PROJECT_DIR$/mysql-db/main.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/protocol/index.go" beforeDir="false" afterPath="$PROJECT_DIR$/protocol/index.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tcp-server/main.go" beforeDir="false" afterPath="$PROJECT_DIR$/tcp-server/main.go" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -81,7 +91,10 @@
     <MESSAGE value="security: remove password from mysql-db/main.go" />
     <MESSAGE value="feature: implement file size limit of 4KB" />
     <MESSAGE value="feature: implement file size limit of 4KB&#10;- frontend input maxsize of 45 characters" />
-    <option name="LAST_COMMIT_MESSAGE" value="feature: implement file size limit of 4KB&#10;- frontend input maxsize of 45 characters" />
+    <MESSAGE value="UX improvements" />
+    <MESSAGE value="initial commit" />
+    <MESSAGE value="remove redundant functions" />
+    <option name="LAST_COMMIT_MESSAGE" value="remove redundant functions" />
   </component>
   <component name="VgoProject">
     <integration-enabled>true</integration-enabled>

@@ -6,6 +6,7 @@ import (
 	"example.com/kendrick/auth"
 	"example.com/kendrick/common"
 	"example.com/kendrick/http-server/fileio"
+	database "example.com/kendrick/mysql-db"
 	"example.com/kendrick/protocol"
 	"example.com/kendrick/security"
 	"fmt"
@@ -31,6 +32,15 @@ var templates *template.Template
 // ********************************
 // *********** COMMON *************
 // ********************************
+// Gets the value of the session cookie. Returns "" if not present.
+func getSid(req *http.Request) string {
+	cookie, err := req.Cookie(auth.SESS_COOKIE_NAME)
+	if err != nil && errors.Is(err, http.ErrNoCookie) {
+		return ""
+	}
+	return cookie.Value
+}
+
 func renderTemplate(w http.ResponseWriter, tmpl string, data interface{}) {
 	file := fmt.Sprintf("%s.html", tmpl)
 	err := templates.ExecuteTemplate(w, file, data)
@@ -98,20 +108,18 @@ func processLoginRes(w http.ResponseWriter, r *http.Request, res protocol.Respon
 		http.Redirect(w, r, "/register"+qs, http.StatusSeeOther)
 		return
 	}
-	username := res.Data[protocol.Username]
-	sid := auth.CreateSession(username)
+	sid := res.Data[protocol.SessionId]
 	http.SetCookie(w, &http.Cookie{
 		Name:  auth.SESS_COOKIE_NAME,
 		Value: sid,
 	})
-	qs := common.QueryString("Welcome, " + username)
-	http.Redirect(w, r, "/edit"+qs, http.StatusSeeOther)
+	http.Redirect(w, r, "/home", http.StatusSeeOther)
 }
 
 // Main handler called when logging in
 func login(w http.ResponseWriter, r *http.Request) {
-	if auth.IsLoggedIn(r) {
-		http.Redirect(w, r, "/edit", http.StatusSeeOther)
+	if auth.IsLoggedIn(getSid(r)) {
+		http.Redirect(w, r, "/home", http.StatusSeeOther)
 		return
 	}
 
@@ -120,18 +128,6 @@ func login(w http.ResponseWriter, r *http.Request) {
 	res := receiveRes(w, conn)
 	processLoginRes(w, r, res)
 	conn.Close()
-}
-
-func loginHandler(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodGet:
-		desc := r.URL.Query().Get("desc")
-		renderTemplate(w, "login", desc)
-	case http.MethodPost:
-		login(w, r)
-	default:
-		log.Fatalln("Unused method" + r.Method)
-	}
 }
 
 // ******************************
@@ -166,15 +162,18 @@ func createEditReq(r *http.Request) (protocol.Request, error) {
 	common.Display("FILE INFORMATION: ", header)
 
 	// store image persistently
-	username := auth.GetSessionUser(r)
-	imgPath := fileio.ImageUpload(file, username)
+	cookie, err := r.Cookie(auth.SESS_COOKIE_NAME)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	imgPath := fileio.ImageUpload(file, auth.GetSessionUser(cookie.Value))
 	common.Display("PROFILE PICTURE UPLOADED: " + imgPath)
 
 	// create return data
 	ret := make(map[string]string)
 	ret[protocol.Nickname] = nickname
 	ret[protocol.ProfilePic] = imgPath
-	ret[protocol.Username] = username
+	ret[protocol.SessionId] = cookie.Value
 	req := protocol.Request{
 		Source: "EDIT",
 		Data:   ret,
@@ -195,37 +194,9 @@ func processEditRes(w http.ResponseWriter, r *http.Request, res protocol.Respons
 	}
 }
 
-func editHandler(w http.ResponseWriter, r *http.Request) {
-	if !auth.IsLoggedIn(r) {
-		http.Redirect(w, r, "/login", http.StatusForbidden)
-		return
-	}
-	switch r.Method {
-	case http.MethodGet:
-		desc := r.URL.Query().Get("desc")
-		renderTemplate(w, "edit", desc)
-	case http.MethodPost:
-		edit(w, r)
-	default:
-		log.Fatalln("Unused method " + r.Method)
-	}
-}
-
 // **********************************
 // *********** REGISTER *************
 // **********************************
-func registerHandler(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodGet:
-		desc := r.URL.Query().Get("desc")
-		renderTemplate(w, "register", desc)
-	case http.MethodPost:
-		create(w, r)
-	default:
-		log.Fatalln("Unused method " + r.Method)
-	}
-}
-
 func create(w http.ResponseWriter, r *http.Request) {
 	req := createRegReq(r)
 	conn := sendReq(req)
@@ -266,20 +237,9 @@ func processRegRes(w http.ResponseWriter, r *http.Request, res protocol.Response
 	}
 }
 
-// ***************************************
-// *********** HTTP HANDLERS *************
-// ***************************************
-func rootHandler(w http.ResponseWriter, r *http.Request) {
-	http.Redirect(w, r, "/login", http.StatusMovedPermanently)
-}
-
-func logoutHandler(w http.ResponseWriter, r *http.Request) {
-	if !auth.IsLoggedIn(r) {
-		http.Redirect(w, r, "/", http.StatusSeeOther)
-	}
-	logout(w, r)
-}
-
+// ********************************
+// *********** LOGOUT *************
+// ********************************
 func logout(w http.ResponseWriter, r *http.Request) {
 	req := createLogoutReq(r)
 	conn := sendReq(req)
@@ -316,8 +276,111 @@ func processLogoutRes(w http.ResponseWriter, r *http.Request, res protocol.Respo
 	}
 }
 
+// ******************************
+// *********** HOME *************
+// ******************************
+func home(w http.ResponseWriter, r *http.Request) {
+	req := createHomeReq(r)
+	conn := sendReq(req)
+	defer conn.Close()
+	res := receiveRes(w, conn)
+	processHomeRes(w, r, res)
+}
+
+// retrieves the current user based on session cookie.
+func createHomeReq(r *http.Request) protocol.Request {
+	cookie, err := r.Cookie(auth.SESS_COOKIE_NAME)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	// get the user details of this session id
+	data := make(map[string]string)
+	data[protocol.SessionId] = cookie.Value
+	req := protocol.Request{
+		Source: "HOME",
+		Data:   data,
+	}
+	common.Display("CREATED HOME REQUEST: ", req)
+	return req
+}
+
+func processHomeRes(w http.ResponseWriter, r *http.Request, res protocol.Response) {
+	common.Display("PROCESSING HOME RESPONSE: ", res)
+	switch res.Code {
+	case protocol.USER_FOUND:
+		renderTemplate(w, "home", res.Data)
+	case protocol.NO_SUCH_USER:
+		qs := common.QueryString("User not found, please login!")
+		http.Redirect(w, r, "/login"+qs, http.StatusSeeOther)
+	}
+}
+
+// ***************************************
+// *********** HTTP HANDLERS *************
+// ***************************************
+func rootHandler(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, "/login", http.StatusMovedPermanently)
+}
+
+func loginHandler(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		desc := r.URL.Query().Get("desc")
+		renderTemplate(w, "login", desc)
+	case http.MethodPost:
+		login(w, r)
+	default:
+		log.Fatalln("Unused method" + r.Method)
+	}
+}
+
+func editHandler(w http.ResponseWriter, r *http.Request) {
+	if !auth.IsLoggedIn(getSid(r)) {
+		http.Redirect(w, r, "/login", http.StatusForbidden)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		desc := r.URL.Query().Get("desc")
+		renderTemplate(w, "edit", desc)
+	case http.MethodPost:
+		edit(w, r)
+	default:
+		log.Fatalln("Unused method " + r.Method)
+	}
+}
+
+func registerHandler(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		desc := r.URL.Query().Get("desc")
+		renderTemplate(w, "register", desc)
+	case http.MethodPost:
+		create(w, r)
+	default:
+		log.Fatalln("Unused method " + r.Method)
+	}
+}
+
+func homeHandler(w http.ResponseWriter, r *http.Request) {
+	if !auth.IsLoggedIn(getSid(r)) {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+	home(w, r)
+}
+
+func logoutHandler(w http.ResponseWriter, r *http.Request) {
+	if !auth.IsLoggedIn(getSid(r)) {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+	logout(w, r)
+}
+
 func init() {
 	templates = template.Must(template.ParseGlob("templates/*.html"))
+	database.Connect()
 }
 
 func main() {
@@ -325,7 +388,9 @@ func main() {
 	http.HandleFunc("/", rootHandler)
 	http.HandleFunc("/login", loginHandler)
 	http.HandleFunc("/logout", logoutHandler)
+	http.HandleFunc("/home", homeHandler)
 	http.HandleFunc("/edit", editHandler)
 	http.HandleFunc("/register", registerHandler)
+	http.Handle("/assets/", http.StripPrefix("/assets", http.FileServer(http.Dir("./assets"))))
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
