@@ -35,7 +35,7 @@ func handleData(req protocol.Request) protocol.Response {
 	case "HOME":
 		return handleHomeReq(req)
 	default:
-		log.Fatalln("Unknown request source " + req.Type)
+		common.Print("Unknown request source " + req.Type)
 	}
 	return protocol.Response{}
 }

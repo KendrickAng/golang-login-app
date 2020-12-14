@@ -19,6 +19,14 @@ func Print(text string, data ...interface{}) {
 	}
 }
 
+func IsError(err error) bool {
+	if err != nil {
+		log.Println(err.Error())
+		return true
+	}
+	return false
+}
+
 // Creates a query string prepended with ?. Usage: "/edit" + QueryString("hello")
 func CreateQueryString(desc string) string {
 	params := url.Values{

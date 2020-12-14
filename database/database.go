@@ -2,8 +2,9 @@ package database
 
 import (
 	"database/sql"
+	"example.com/kendrick/common"
+	"example.com/kendrick/fileio"
 	"example.com/kendrick/protocol"
-	"example.com/kendrick/tcp-server/fileio"
 	"github.com/go-sql-driver/mysql"
 	_ "github.com/go-sql-driver/mysql"
 	"log"
@@ -88,13 +89,13 @@ func GetUser(key string) []protocol.User {
 func InsertSession(uuid string, username string) int64 {
 	ensureConnected(db)
 	result, err := db.Exec("INSERT INTO sessions VALUES (?, ?)", uuid, username)
-	if err != nil {
-		log.Panicln(err)
+	if common.IsError(err) {
+		return 0
 	}
 	log.Println("INSERT SESSION: uuid: " + uuid + " | username: " + username)
 	rows, err := result.RowsAffected()
 	if rows != 1 {
-		log.Fatalln("CREATE SESSION: one row not inserted!")
+		common.Print("CREATE SESSION: one row not inserted!")
 	}
 	return rows
 }

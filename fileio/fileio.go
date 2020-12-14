@@ -5,6 +5,7 @@ import (
 	"image/jpeg"
 	_ "image/jpeg"
 	_ "image/png"
+	"io/ioutil"
 	"log"
 	"mime/multipart"
 	"os"
@@ -12,6 +13,14 @@ import (
 	"path/filepath"
 	"runtime"
 )
+
+func ReadPw() string {
+	data, err := ioutil.ReadFile(filepath.Join(RootDir() + "/dbPw.txt"))
+	if err != nil {
+		log.Fatalln(err)
+	}
+	return string(data)
+}
 
 // saves the image to the http-server/assets/ directory. Returns relative filepath if success
 func ImageUpload(file multipart.File, suffix string) string {
@@ -25,7 +34,7 @@ func ImageUpload(file multipart.File, suffix string) string {
 
 // returns an absolute image path given User.ProfilePic.
 func ImagePath(suffix string) string {
-	return rootDir() + suffix
+	return RootDir() + suffix
 }
 
 // convert to image.Image
@@ -39,7 +48,7 @@ func fileToImage(file multipart.File) image.Image {
 
 func createAssetsFile(suffix string) (string, *os.File) {
 	pathsuffix := "/assets/" + suffix + ".jpg"
-	pathname := filepath.Join(rootDir(), pathsuffix)
+	pathname := filepath.Join(RootDir(), pathsuffix)
 	dest, err := os.Create(pathname)
 	if err != nil {
 		log.Fatalln(err)
@@ -55,7 +64,7 @@ func write(img image.Image, dest *os.File) {
 }
 
 // gets the root directory where main.go is running
-func rootDir() string {
+func RootDir() string {
 	_, b, _, _ := runtime.Caller(0)
 	d := path.Join(path.Dir(b))
 	return filepath.Dir(d)

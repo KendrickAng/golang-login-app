@@ -6,7 +6,8 @@ import (
 	"example.com/kendrick/auth"
 	"example.com/kendrick/common"
 	database "example.com/kendrick/database"
-	"example.com/kendrick/http-server/fileio"
+	"example.com/kendrick/fileio"
+	"example.com/kendrick/profiling"
 	"example.com/kendrick/protocol"
 	"example.com/kendrick/security"
 	"fmt"
@@ -335,6 +336,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		desc := r.URL.Query().Get("desc")
 		renderTemplate(w, "login", desc)
 	case http.MethodPost:
+		profiling.RecordLogin("LOGIN")
 		login(w, r)
 	default:
 		log.Fatalln("Unused method" + r.Method)
@@ -388,6 +390,7 @@ func logoutHandler(w http.ResponseWriter, r *http.Request) {
 func init() {
 	templates = template.Must(template.ParseGlob("templates/*.html"))
 	database.Connect()
+	profiling.InitLogFiles()
 }
 
 func main() {

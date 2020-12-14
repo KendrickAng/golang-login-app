@@ -4,7 +4,7 @@
 <h6>{{.}}</h6>
 {{ end }}
 
-<form action="/login" method="POST">
+<form action="/login" enctype="application/x-www-form-urlencoded" method="POST">
     <div>
         <label for="uname">Username</label>
         <input type="text" name="username" id="uname" maxlength="45">
