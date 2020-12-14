@@ -15,7 +15,6 @@ import (
 // *********** COMMON *************
 // ********************************
 func handleConn(conn net.Conn) {
-	defer conn.Close()
 	message := receiveData(conn)
 	response := handleData(message)
 	sendResponse(response, conn)
