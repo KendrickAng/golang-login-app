@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"example.com/kendrick/auth"
 	"example.com/kendrick/common"
-	database "example.com/kendrick/mysql-db"
+	database "example.com/kendrick/database"
 	"example.com/kendrick/protocol"
 	"io"
 	"log"
@@ -23,7 +23,7 @@ func handleConn(conn net.Conn) {
 
 // Invokes the relevant request handler
 func handleData(req protocol.Request) protocol.Response {
-	switch req.Source {
+	switch req.Type {
 	case "LOGIN":
 		return handleLoginReq(req)
 	case "EDIT":
@@ -35,7 +35,7 @@ func handleData(req protocol.Request) protocol.Response {
 	case "HOME":
 		return handleHomeReq(req)
 	default:
-		log.Fatalln("Unknown request source " + req.Source)
+		log.Fatalln("Unknown request source " + req.Type)
 	}
 	return protocol.Response{}
 }
@@ -53,9 +53,9 @@ func receiveData(conn net.Conn) protocol.Request {
 }
 
 func sendResponse(data protocol.Response, conn net.Conn) {
-	res := protocol.CreateResponse(data)
+	res := protocol.EncodeJson(data)
 	_, err := conn.Write(res)
-	common.Display("SENDING RESPONSE: ", string(res))
+	common.Print("SENDING RESPONSE: ", string(res))
 	if err != nil {
 		log.Panicln(err)
 	}
@@ -66,7 +66,7 @@ func handleLoginReq(req protocol.Request) protocol.Response {
 	data := req.Data
 	username := data[protocol.Username]
 	pw := data[protocol.PwPlain]
-	common.Display("HANDLING LOGIN REQ: ", data)
+	common.Print("HANDLING LOGIN REQ: ", data)
 
 	if auth.IsValidPassword(username, pw) {
 		sid := auth.CreateSession(username)
@@ -74,19 +74,19 @@ func handleLoginReq(req protocol.Request) protocol.Response {
 		data[protocol.Username] = username
 		data[protocol.SessionId] = sid
 		res := protocol.Response{
-			Code:        protocol.USER_FOUND,
+			Code:        protocol.CREDENTIALS_INVALID,
 			Description: "Login for " + username + " succeeded",
 			Data:        data,
 		}
-		common.Display("VALID PW, SENDING RESPONSE: ", res)
+		common.Print("VALID PW, SENDING RESPONSE: ", res)
 		return res
 	}
 	res := protocol.Response{
-		Code:        protocol.NO_SUCH_USER,
+		Code:        protocol.CREDENTIALS_VALID,
 		Description: "Login for " + username + " failed",
 		Data:        nil,
 	}
-	common.Display("INVALID PW, SENDING RESPONSE: ", res)
+	common.Print("INVALID PW, SENDING RESPONSE: ", res)
 	return res
 }
 
@@ -96,7 +96,7 @@ func handleEditReq(req protocol.Request) protocol.Response {
 	nickname := data[protocol.Nickname]
 	picPath := data[protocol.ProfilePic]
 	username := auth.GetSessionUser(sid)
-	common.Display("HANDLING EDIT REQ: ", data)
+	common.Print("HANDLING EDIT REQ: ", data)
 
 	// Find the username, and replace the relevant details
 	numRows := database.UpdateUser(username, nickname, picPath)
@@ -106,7 +106,7 @@ func handleEditReq(req protocol.Request) protocol.Response {
 			Description: "Edited " + username + " successfully",
 			Data:        nil,
 		}
-		common.Display("VALID EDIT, SENDING RESPONSE: ", res)
+		common.Print("VALID EDIT, SENDING RESPONSE: ", res)
 		return res
 	}
 	res := protocol.Response{
@@ -114,14 +114,14 @@ func handleEditReq(req protocol.Request) protocol.Response {
 		Description: "Editing " + username + " failed",
 		Data:        nil,
 	}
-	common.Display("INVALID EDIT, SENDING RESPONSE: ", res)
+	common.Print("INVALID EDIT, SENDING RESPONSE: ", res)
 	return res
 }
 
 func handleLogoutReq(req protocol.Request) protocol.Response {
 	data := req.Data
 	sid := data[protocol.SessionId]
-	common.Display("HANDLING LOGOUT REQ: ", data)
+	common.Print("HANDLING LOGOUT REQ: ", data)
 
 	username := auth.DelSessionUser(sid)
 	res := protocol.Response{
@@ -129,7 +129,7 @@ func handleLogoutReq(req protocol.Request) protocol.Response {
 		Description: "Logged out: " + sid + " " + username,
 		Data:        nil,
 	}
-	common.Display("VALID LOGOUT, SENDING RESPONSE: ", res)
+	common.Print("VALID LOGOUT, SENDING RESPONSE: ", res)
 	return res
 }
 
@@ -138,7 +138,7 @@ func handleRegReq(req protocol.Request) protocol.Response {
 	nickname := data[protocol.Nickname]
 	username := data[protocol.Username]
 	password := data[protocol.PwHash]
-	common.Display("HANDLING REGISTER REQ: ", data)
+	common.Print("HANDLING REGISTER REQ: ", data)
 
 	numRows := database.InsertUser(username, password, nickname)
 	if numRows == 1 {
@@ -147,7 +147,7 @@ func handleRegReq(req protocol.Request) protocol.Response {
 			Description: "INSERT: " + username + " " + password + " " + nickname,
 			Data:        nil,
 		}
-		common.Display("VALID REGISTER, SENDING RESPONSE: ", res)
+		common.Print("VALID REGISTER, SENDING RESPONSE: ", res)
 		return res
 	}
 	res := protocol.Response{
@@ -155,14 +155,14 @@ func handleRegReq(req protocol.Request) protocol.Response {
 		Description: "INSERT failed: " + username + " " + password + " " + nickname,
 		Data:        nil,
 	}
-	common.Display("INVALID REGISTER, SENDING RESPONSE: ", res)
+	common.Print("INVALID REGISTER, SENDING RESPONSE: ", res)
 	return res
 }
 
 func handleHomeReq(req protocol.Request) protocol.Response {
 	data := req.Data
 	sid := data[protocol.SessionId]
-	common.Display("HANDLING HOME REQ: ", data)
+	common.Print("HANDLING HOME REQ: ", data)
 
 	username := auth.GetSessionUser(sid)
 	log.Println(sid, username)
@@ -174,19 +174,19 @@ func handleHomeReq(req protocol.Request) protocol.Response {
 		ret[protocol.Nickname] = rows[0].Nickname
 		ret[protocol.ProfilePic] = rows[0].ProfilePic
 		response := protocol.Response{
-			Code:        protocol.USER_FOUND,
+			Code:        protocol.CREDENTIALS_INVALID,
 			Description: "User " + username + " found!",
 			Data:        ret,
 		}
-		common.Display("VALID HOME, SENDING RESPONSE: ", response)
+		common.Print("VALID HOME, SENDING RESPONSE: ", response)
 		return response
 	}
 	response := protocol.Response{
-		Code:        protocol.NO_SUCH_USER,
+		Code:        protocol.CREDENTIALS_VALID,
 		Description: "User " + username + " not found...",
 		Data:        nil,
 	}
-	common.Display("INVALID HOME, SENDING RESPONSE: ", response)
+	common.Print("INVALID HOME, SENDING RESPONSE: ", response)
 	return response
 }
 
@@ -196,7 +196,7 @@ func init() {
 }
 
 func main() {
-	common.Display("TCP Server listening on port 8081", nil)
+	common.Print("TCP Server listening on port 8081", nil)
 	ln, err := net.Listen("tcp", ":8081")
 	if err != nil {
 		log.Fatalln(err)

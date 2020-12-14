@@ -1,7 +1,7 @@
 package auth
 
 import (
-	"example.com/kendrick/mysql-db"
+	"example.com/kendrick/database"
 	"example.com/kendrick/security"
 	"github.com/satori/uuid"
 )
