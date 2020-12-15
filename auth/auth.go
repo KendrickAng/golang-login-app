@@ -16,14 +16,6 @@ It also queries the SQL database, if needed.
 */
 func IsLoggedIn(uuid string) bool {
 	return uuid != ""
-	//if len(uuid) == 0 {
-	//	return false
-	//}
-	//users := database.GetSession(uuid)
-	//if len(users) != 1 {
-	//	return false
-	//}
-	//return isValidUser(users[0].Username)
 }
 
 // Returns true if the username exists in the SQL DB.
