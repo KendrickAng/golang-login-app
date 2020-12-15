@@ -8,6 +8,7 @@ import (
 	"github.com/go-sql-driver/mysql"
 	_ "github.com/go-sql-driver/mysql"
 	"log"
+	"time"
 )
 
 var db *sql.DB
@@ -79,6 +80,7 @@ func GetUser(key string) []protocol.User {
 	if err != nil {
 		log.Panicln(err)
 	}
+	defer res.Close()
 	ret := rowsToUsers(res)
 	if len(ret) > 1 {
 		log.Panicln("GET USER: too many rows for key " + key)
@@ -92,7 +94,7 @@ func InsertSession(uuid string, username string) int64 {
 	if common.IsError(err) {
 		return 0
 	}
-	log.Println("INSERT SESSION: uuid: " + uuid + " | username: " + username)
+	common.Print("INSERT SESSION: uuid: " + uuid + " | username: " + username)
 	rows, err := result.RowsAffected()
 	if rows != 1 {
 		common.Print("CREATE SESSION: one row not inserted!")
@@ -113,11 +115,12 @@ func DeleteSession(uuid string) int64 {
 
 func GetSession(uuid string) []protocol.Session {
 	ensureConnected(db)
-	res, err := db.Query("SELECT uuid, username FROM sessions WHERE uuid=?", uuid)
+	rows, err := db.Query("SELECT uuid, username FROM sessions WHERE uuid=?", uuid)
 	if err != nil {
 		log.Panicln(err)
 	}
-	ret := rowsToSessions(res)
+	defer rows.Close()
+	ret := rowsToSessions(rows)
 	if len(ret) > 1 {
 		log.Panicln("GET SESSION: Too many sessions for " + uuid)
 	}
@@ -146,11 +149,15 @@ func Connect() {
 	if err != nil {
 		log.Panicln(err.Error())
 	}
+	db.SetMaxOpenConns(100)
+	db.SetMaxIdleConns(150)
+	db.SetConnMaxLifetime(time.Second * 60)
 	log.Println("Connected to MySQL database")
 }
 
-func disconnect() {
+func Disconnect() {
 	_ = db.Close()
+	log.Println("Disconnected from MySQL database")
 }
 
 func ensureConnected(ptr *sql.DB) {

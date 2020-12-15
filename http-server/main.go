@@ -5,7 +5,6 @@ import (
 	"errors"
 	"example.com/kendrick/auth"
 	"example.com/kendrick/common"
-	database "example.com/kendrick/database"
 	"example.com/kendrick/fileio"
 	"example.com/kendrick/profiling"
 	"example.com/kendrick/protocol"
@@ -17,6 +16,7 @@ import (
 	_ "mime/multipart"
 	"net"
 	"net/http"
+	_ "net/http/pprof"
 	"net/url"
 	"os"
 	"strconv"
@@ -24,7 +24,7 @@ import (
 )
 
 const (
-	TIMEOUT     = time.Second * 5
+	TIMEOUT     = time.Second * 7
 	IMG_MAXSIZE = 1 << 12 // 2^12
 )
 
@@ -50,6 +50,12 @@ func renderTemplate(w http.ResponseWriter, tmpl string, data interface{}) {
 	}
 }
 
+func handleError(err error) {
+	if err != nil {
+		log.Println(err.Error())
+	}
+}
+
 func sendReq(data protocol.Request) net.Conn {
 	conn, err := net.Dial("tcp", "localhost:8081")
 	if err != nil {
@@ -64,11 +70,9 @@ func sendReq(data protocol.Request) net.Conn {
 	return conn
 }
 
-func receiveRes(w http.ResponseWriter, conn net.Conn) protocol.Response {
+func receiveRes(conn net.Conn) protocol.Response {
 	err := conn.SetDeadline(time.Now().Add(TIMEOUT))
-	if err != nil {
-		log.Panicln(err)
-	}
+	handleError(err)
 	dec := json.NewDecoder(conn)
 	var res protocol.Response
 	err = dec.Decode(&res)
@@ -80,14 +84,13 @@ func receiveRes(w http.ResponseWriter, conn net.Conn) protocol.Response {
 			Data:        nil,
 		}
 	} else if errors.Is(err, os.ErrDeadlineExceeded) {
-		http.Error(w, "TCP Server timeout", http.StatusInternalServerError)
 		return protocol.Response{
 			Code:        protocol.TCP_SERVER_TIMEOUT,
 			Description: "TCP Server timeout after " + strconv.FormatInt(int64(TIMEOUT), 10) + " seconds",
 			Data:        nil,
 		}
-	} else if err != nil {
-		log.Fatalln(err)
+	} else {
+		handleError(err)
 	}
 	common.Print("RECEIVED RESPONSE: ", res)
 	err = conn.SetDeadline(time.Time{})
@@ -119,11 +122,11 @@ func processLoginRes(w http.ResponseWriter, r *http.Request, res protocol.Respon
 		return
 	}
 	sid := res.Data[protocol.SessionId]
+	http.Redirect(w, r, "/home", http.StatusSeeOther)
 	http.SetCookie(w, &http.Cookie{
 		Name:  auth.SESS_COOKIE_NAME,
 		Value: sid,
 	})
-	http.Redirect(w, r, "/home", http.StatusSeeOther)
 }
 
 // Main handler called when logging in
@@ -136,7 +139,7 @@ func login(w http.ResponseWriter, r *http.Request) {
 	req := createLoginReq(r)
 	conn := sendReq(req)
 	defer conn.Close()
-	res := receiveRes(w, conn)
+	res := receiveRes(conn)
 	processLoginRes(w, r, res)
 }
 
@@ -152,7 +155,7 @@ func edit(w http.ResponseWriter, r *http.Request) {
 	}
 	conn := sendReq(req)
 	defer conn.Close()
-	res := receiveRes(w, conn)
+	res := receiveRes(conn)
 	processEditRes(w, r, res)
 }
 
@@ -210,7 +213,7 @@ func processEditRes(w http.ResponseWriter, r *http.Request, res protocol.Respons
 func registerUser(w http.ResponseWriter, r *http.Request) {
 	req := createRegisterReq(r)
 	conn := sendReq(req)
-	res := receiveRes(w, conn)
+	res := receiveRes(conn)
 	processRegisterRes(w, r, res)
 	conn.Close()
 }
@@ -251,7 +254,7 @@ func processRegisterRes(w http.ResponseWriter, r *http.Request, res protocol.Res
 func logout(w http.ResponseWriter, r *http.Request) {
 	req := createLogoutReq(r)
 	conn := sendReq(req)
-	res := receiveRes(w, conn)
+	res := receiveRes(conn)
 	processLogoutRes(w, r, res)
 	conn.Close()
 }
@@ -291,7 +294,7 @@ func home(w http.ResponseWriter, r *http.Request) {
 	req := createHomeReq(r)
 	conn := sendReq(req)
 	defer conn.Close()
-	res := receiveRes(w, conn)
+	res := receiveRes(conn)
 	processHomeRes(w, r, res)
 }
 
@@ -336,7 +339,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		desc := r.URL.Query().Get("desc")
 		renderTemplate(w, "login", desc)
 	case http.MethodPost:
-		profiling.RecordLogin("LOGIN")
+		// profiling.RecordLogin("LOGIN")
 		login(w, r)
 	default:
 		log.Fatalln("Unused method" + r.Method)
@@ -389,7 +392,7 @@ func logoutHandler(w http.ResponseWriter, r *http.Request) {
 
 func init() {
 	templates = template.Must(template.ParseGlob("templates/*.html"))
-	database.Connect()
+	// database.Connect()
 	profiling.InitLogFiles()
 }
 

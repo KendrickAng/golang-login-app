@@ -6,7 +6,6 @@ import (
 	"example.com/kendrick/common"
 	database "example.com/kendrick/database"
 	"example.com/kendrick/protocol"
-	"io"
 	"log"
 	"net"
 )
@@ -14,8 +13,20 @@ import (
 // ********************************
 // *********** COMMON *************
 // ********************************
+func handleConnError(err error) {
+	if err != nil {
+		log.Println(err.Error())
+		if e, ok := err.(*net.OpError); ok {
+			log.Println(e.Error())
+		}
+		//profiling.RecordLogin(err.Error() + "\n")
+	}
+}
+
 func handleConn(conn net.Conn) {
-	message := receiveData(conn)
+	defer conn.Close()
+	message, err := receiveData(conn)
+	handleConnError(err)
 	response := handleData(message)
 	sendResponse(response, conn)
 }
@@ -24,6 +35,7 @@ func handleConn(conn net.Conn) {
 func handleData(req protocol.Request) protocol.Response {
 	switch req.Type {
 	case "LOGIN":
+		// profiling.RecordLogin("LOGIN\n")
 		return handleLoginReq(req)
 	case "EDIT":
 		return handleEditReq(req)
@@ -39,22 +51,18 @@ func handleData(req protocol.Request) protocol.Response {
 	return protocol.Response{}
 }
 
-func receiveData(conn net.Conn) protocol.Request {
+func receiveData(conn net.Conn) (protocol.Request, error) {
 	dec := json.NewDecoder(conn)
 	var m protocol.Request
-	if err := dec.Decode(&m); err == io.EOF {
-		// do nothing
-	} else if err != nil {
-		log.Fatalln(err)
+	if err := dec.Decode(&m); err != nil {
+		return protocol.Request{}, err
 	}
-	log.Println(m)
-	return m
+	return m, nil
 }
 
 func sendResponse(data protocol.Response, conn net.Conn) {
 	res := protocol.EncodeJson(data)
 	_, err := conn.Write(res)
-	common.Print("SENDING RESPONSE: ", string(res))
 	if err != nil {
 		log.Panicln(err)
 	}
@@ -198,12 +206,13 @@ func main() {
 	common.Print("TCP Server listening on port 8081", nil)
 	ln, err := net.Listen("tcp", ":8081")
 	if err != nil {
-		log.Fatalln(err)
+		log.Panicln(err)
 	}
+	defer database.Disconnect()
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
-			log.Fatalln(err)
+			log.Panicln(err)
 		}
 		go handleConn(conn)
 	}

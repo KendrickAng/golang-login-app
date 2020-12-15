@@ -39,7 +39,7 @@ func createFile(filePath string) {
 
 func writeFile(filePath string, content string) {
 	// Open file with READ and WRITE permissions
-	file, err := os.OpenFile(filePath, os.O_RDWR, 0644)
+	file, err := os.OpenFile(filePath, os.O_RDWR|os.O_APPEND, 0644)
 	if isError(err) {
 		return
 	}
@@ -59,12 +59,9 @@ func writeFile(filePath string, content string) {
 }
 
 func deleteFile(filePath string) {
-	_, err := os.Stat(filePath)
-	if os.IsExist(err) {
-		err := os.Remove(filePath)
-		if isError(err) {
-			return
-		}
+	err := os.Remove(filePath)
+	if isError(err) {
+		return
 	}
 }
 

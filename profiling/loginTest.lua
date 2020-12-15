@@ -9,7 +9,7 @@ init = function(args)
         requests[i] = wrk.format("POST", "/login", nil, body)
     end
     print("Generated requests table\n")
-    print(table.concat(requests, "\n"))
+    --print(table.concat(requests, "\n"))
 end
 
 request = function()
