@@ -1,10 +1,5 @@
 package protocol
 
-import (
-	"encoding/json"
-	"log"
-)
-
 const (
 	Username   = "username"
 	Nickname   = "nickname"
@@ -51,10 +46,35 @@ const (
 )
 
 // Creates an encoded POST request (to be sent to server)
-func EncodeJson(v interface{}) []byte {
-	b, err := json.Marshal(v)
-	if err != nil {
-		log.Panicln(err)
-	}
-	return b
-}
+//func EncodeJson(v interface{}) []byte {
+//	b, err := json.Marshal(v)
+//	if err != nil {
+//		log.Panicln(err)
+//	}
+//	return b
+//}
+
+//func Encode(req Request) string {
+//	bytes := bytes.Buffer{}
+//	err := gob.NewEncoder(&bytes).Encode(req)
+//	if err != nil {
+//		log.Panicln("Failed to encode:", err)
+//	}
+//	return base64.StdEncoding.EncodeToString(bytes.Bytes())
+//}
+
+//func Decode(res Response) User {
+//	u := User{}
+//	by, err := base64.StdEncoding.DecodeString(str)
+//	if err != nil {
+//		log.Panicln("Failed base64 decode: ", err)
+//	}
+//	b := bytes.Buffer{}
+//	b.Write(by)
+//	d := gob.NewDecoder(&b)
+//	err = d.Decode(&u)
+//	if err != nil {
+//		log.Panicln("Failed gob decode: ", err)
+//	}
+//	return u
+//}

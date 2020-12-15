@@ -1,7 +1,7 @@
 package main
 
 import (
-	"encoding/json"
+	"encoding/gob"
 	"example.com/kendrick/auth"
 	"example.com/kendrick/common"
 	database "example.com/kendrick/database"
@@ -52,19 +52,18 @@ func handleData(req protocol.Request) protocol.Response {
 }
 
 func receiveData(conn net.Conn) (protocol.Request, error) {
-	dec := json.NewDecoder(conn)
 	var m protocol.Request
-	if err := dec.Decode(&m); err != nil {
+	err := gob.NewDecoder(conn).Decode(&m)
+	if err != nil {
 		return protocol.Request{}, err
 	}
 	return m, nil
 }
 
 func sendResponse(data protocol.Response, conn net.Conn) {
-	res := protocol.EncodeJson(data)
-	_, err := conn.Write(res)
+	err := gob.NewEncoder(conn).Encode(data)
 	if err != nil {
-		log.Panicln(err)
+		log.Println(err)
 	}
 }
 

@@ -1,7 +1,7 @@
 package main
 
 import (
-	"encoding/json"
+	"encoding/gob"
 	"errors"
 	"example.com/kendrick/auth"
 	"example.com/kendrick/common"
@@ -61,11 +61,10 @@ func sendReq(data protocol.Request) net.Conn {
 	if err != nil {
 		log.Fatalln(err)
 	}
-	req := protocol.EncodeJson(data)
-	common.Print("SENDING REQUEST: ", string(req))
-	_, err = conn.Write(req)
+	err = gob.NewEncoder(conn).Encode(&data)
+	common.Print("SENDING REQUEST: ", data)
 	if err != nil {
-		log.Fatalln(err)
+		log.Println(err)
 	}
 	return conn
 }
@@ -73,9 +72,8 @@ func sendReq(data protocol.Request) net.Conn {
 func receiveRes(conn net.Conn) protocol.Response {
 	err := conn.SetDeadline(time.Now().Add(TIMEOUT))
 	handleError(err)
-	dec := json.NewDecoder(conn)
 	var res protocol.Response
-	err = dec.Decode(&res)
+	err = gob.NewDecoder(conn).Decode(&res)
 	if err == io.EOF {
 		common.Print("EOF WHEN READING RESPONSE", nil)
 		return protocol.Response{
@@ -93,7 +91,7 @@ func receiveRes(conn net.Conn) protocol.Response {
 		handleError(err)
 	}
 	common.Print("RECEIVED RESPONSE: ", res)
-	err = conn.SetDeadline(time.Time{})
+	//err = conn.SetDeadline(time.Time{})
 	return res
 }
 
@@ -122,11 +120,12 @@ func processLoginRes(w http.ResponseWriter, r *http.Request, res protocol.Respon
 		return
 	}
 	sid := res.Data[protocol.SessionId]
-	http.Redirect(w, r, "/home", http.StatusSeeOther)
 	http.SetCookie(w, &http.Cookie{
 		Name:  auth.SESS_COOKIE_NAME,
 		Value: sid,
 	})
+	http.Redirect(w, r, "/home", http.StatusSeeOther)
+	return
 }
 
 // Main handler called when logging in
