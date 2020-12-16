@@ -94,10 +94,10 @@ func InsertSession(uuid string, username string) int64 {
 	if common.IsError(err) {
 		return 0
 	}
-	common.Print("INSERT SESSION: uuid: " + uuid + " | username: " + username)
+	//log.Println("INSERT SESSION: uuid: " + uuid + " | username: " + username)
 	rows, err := result.RowsAffected()
 	if rows != 1 {
-		common.Print("CREATE SESSION: one row not inserted!")
+		log.Println("CREATE SESSION: one row not inserted!")
 	}
 	return rows
 }

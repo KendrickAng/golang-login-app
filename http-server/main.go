@@ -26,7 +26,7 @@ import (
 const (
 	TIMEOUT     = time.Second * 7
 	IMG_MAXSIZE = 1 << 12 // 2^12
-	LOG_LEVEL   = log.InfoLevel
+	LOG_LEVEL   = log.DebugLevel
 )
 
 type httpHandler = func(w http.ResponseWriter, r *http.Request)
@@ -54,17 +54,18 @@ func renderTemplate(w http.ResponseWriter, tmpl string, data interface{}) {
 	}
 }
 
-func handleError(conn net.Conn, err error) {
+func handleError(rid string, conn net.Conn, err error) {
 	if err != nil {
+		logger := log.WithFields(log.Fields{protocol.RequestId: rid})
 		if err == io.EOF {
 			// connection closed by TCP server
-			log.Error("EOF, closing connection", err)
+			logger.Error(err)
 			conn.Close()
 		} else if errors.Is(err, os.ErrDeadlineExceeded) {
 			// read deadline exceeded, do nothing
-			log.Error("OS Deadline Exceeded", err)
+			logger.Error(err)
 		} else {
-			log.Error("Others", err)
+			logger.Error("Others: ", err)
 		}
 	}
 }
@@ -151,7 +152,8 @@ func createLoginReq(r *http.Request) protocol.Request {
 }
 
 func processLoginRes(w http.ResponseWriter, r *http.Request, res protocol.Response) {
-	log.Debug("Processing login response", res)
+	logger := log.WithField(protocol.RequestId, res.Id)
+	logger.Debug("Processing login response")
 	if res.Code != protocol.CREDENTIALS_INVALID {
 		qs := common.CreateQueryString("No such account, please register first!")
 		http.Redirect(w, r, "/register"+qs, http.StatusSeeOther)
@@ -163,7 +165,7 @@ func processLoginRes(w http.ResponseWriter, r *http.Request, res protocol.Respon
 		Value: sid,
 	})
 	http.Redirect(w, r, "/home", http.StatusSeeOther)
-	log.Debug("Processed login response")
+	logger.Debug("Processed login response")
 	return
 }
 
@@ -173,7 +175,6 @@ func login(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/home", http.StatusSeeOther)
 		return
 	}
-
 	req := createLoginReq(r)
 	log.Info("Create login request", req)
 	conn := getTcpConn()
@@ -181,22 +182,22 @@ func login(w http.ResponseWriter, r *http.Request) {
 	err := sendReq(conn, req)
 	if err != nil {
 		log.Info("In request")
-		handleError(conn, err)
+		handleError(req.Id, conn, err)
 		qs := common.CreateQueryString("Login failed, please try again in a while")
 		http.Redirect(w, r, "/login"+qs, http.StatusSeeOther)
 		return
 	}
 	res, err := receiveRes(conn)
-	log.Info("Receive login response", req)
+	log.Info("Receive login response", res)
 	if err != nil {
 		log.Info("In response")
-		handleError(conn, err)
+		handleError(req.Id, conn, err)
 		qs := common.CreateQueryString("Login failed, please try again in a while")
 		http.Redirect(w, r, "/login"+qs, http.StatusSeeOther)
 		return
 	}
 	processLoginRes(w, r, res)
-	log.Info("Request handled!")
+	log.WithField(protocol.RequestId, req.Id).Info("Connection closed")
 }
 
 // ******************************
@@ -464,7 +465,7 @@ func logoutHandler(w http.ResponseWriter, r *http.Request) {
 
 func initLogger() {
 	customFormatter := new(log.TextFormatter)
-	customFormatter.TimestampFormat = "2006-01-02 15:04:05"
+	customFormatter.TimestampFormat = "Jan _2 15:04:05.000000"
 	customFormatter.FullTimestamp = true
 	customFormatter.ForceColors = false
 	customFormatter.DisableColors = true
@@ -478,7 +479,8 @@ func initLogger() {
 	if err != nil {
 		log.Println(err)
 	}
-	log.SetOutput(io.MultiWriter(file, os.Stdout))
+	log.SetOutput(file)
+	//log.SetOutput(io.MultiWriter(file, os.Stdout))
 	log.SetLevel(LOG_LEVEL)
 }
 

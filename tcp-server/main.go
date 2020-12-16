@@ -12,27 +12,27 @@ import (
 	"os"
 )
 
-const LOG_LEVEL = log.InfoLevel
+const LOG_LEVEL = log.DebugLevel
 
 // ********************************
 // *********** COMMON *************
 // ********************************
-func handleError(conn net.Conn, err error) {
+func handleError(rid string, conn net.Conn, err error) {
 	if err != nil {
+		logger := log.WithFields(log.Fields{protocol.RequestId: rid})
 		if err == io.EOF {
 			// connection closed by HTTP server
-			log.Error("Connection closed by HTTP server, exiting", err)
+			logger.Error(err)
 			conn.Close()
 		} else if e, ok := err.(*net.OpError); ok {
 			if e.Timeout() {
 				// If SetDeadline triggers
-				log.Error("Timeout (likely from SetDeadline)", e)
+				logger.Error("Timeout (likely from SetDeadline) ", e)
 			} else {
-				log.Error(e)
+				logger.Error("OpError: ", e)
 			}
 		} else {
-			log.Error(err)
-			//profiling.RecordLogin(err.Error() + "\n")
+			logger.Error(err)
 		}
 	}
 }
@@ -40,12 +40,21 @@ func handleError(conn net.Conn, err error) {
 func handleConn(conn net.Conn) {
 	defer conn.Close()
 	message, err := receiveData(conn)
-	log.Info("Received request", message)
-	handleError(conn, err)
+	if err != nil {
+		log.Info("Receive request failed", message)
+		handleError(message.Id, conn, err)
+		return
+	}
+	log.Info("Receive request success", message)
 	response := handleData(message)
 	log.Info("Sending response", message)
 	err = sendResponse(response, conn)
-	handleError(conn, err)
+	if err != nil {
+		log.Info("Send response failed", message)
+		handleError(message.Id, conn, err)
+		return
+	}
+	log.Info("Send response success", message)
 }
 
 // Invokes the relevant request handler
@@ -105,6 +114,7 @@ func handleLoginReq(req protocol.Request) protocol.Response {
 		data[protocol.Username] = username
 		data[protocol.SessionId] = sid
 		res := protocol.Response{
+			Id:          req.Id,
 			Code:        protocol.CREDENTIALS_INVALID,
 			Description: "Login for " + username + " succeeded",
 			Data:        data,
@@ -113,6 +123,7 @@ func handleLoginReq(req protocol.Request) protocol.Response {
 		return res
 	}
 	res := protocol.Response{
+		Id:          req.Id,
 		Code:        protocol.CREDENTIALS_VALID,
 		Description: "Login for " + username + " failed",
 		Data:        nil,
@@ -139,6 +150,7 @@ func handleEditReq(req protocol.Request) protocol.Response {
 	numRows := database.UpdateUser(username, nickname, picPath)
 	if numRows == 1 {
 		res := protocol.Response{
+			Id:          req.Id,
 			Code:        protocol.EDIT_SUCCESS,
 			Description: "Edited " + username + " successfully",
 			Data:        nil,
@@ -147,6 +159,7 @@ func handleEditReq(req protocol.Request) protocol.Response {
 		return res
 	}
 	res := protocol.Response{
+		Id:          req.Id,
 		Code:        protocol.EDIT_FAILED,
 		Description: "Editing " + username + " failed",
 		Data:        nil,
@@ -165,6 +178,7 @@ func handleLogoutReq(req protocol.Request) protocol.Response {
 
 	username := auth.DelSessionUser(sid)
 	res := protocol.Response{
+		Id:          req.Id,
 		Code:        protocol.LOGOUT_SUCCESS,
 		Description: "Logged out: " + sid + " " + username,
 		Data:        nil,
@@ -188,6 +202,7 @@ func handleRegReq(req protocol.Request) protocol.Response {
 	numRows := database.InsertUser(username, password, nickname)
 	if numRows == 1 {
 		res := protocol.Response{
+			Id:          req.Id,
 			Code:        protocol.INSERT_SUCCESS,
 			Description: "INSERT: " + username + " " + password + " " + nickname,
 			Data:        nil,
@@ -196,6 +211,7 @@ func handleRegReq(req protocol.Request) protocol.Response {
 		return res
 	}
 	res := protocol.Response{
+		Id:          req.Id,
 		Code:        protocol.INSERT_FAILED,
 		Description: "INSERT failed: " + username + " " + password + " " + nickname,
 		Data:        nil,
@@ -222,6 +238,7 @@ func handleHomeReq(req protocol.Request) protocol.Response {
 		ret[protocol.Nickname] = rows[0].Nickname
 		ret[protocol.ProfilePic] = rows[0].ProfilePic
 		response := protocol.Response{
+			Id:          req.Id,
 			Code:        protocol.CREDENTIALS_INVALID,
 			Description: "User " + username + " found!",
 			Data:        ret,
@@ -230,6 +247,7 @@ func handleHomeReq(req protocol.Request) protocol.Response {
 		return response
 	}
 	response := protocol.Response{
+		Id:          req.Id,
 		Code:        protocol.CREDENTIALS_VALID,
 		Description: "User " + username + " not found...",
 		Data:        nil,
@@ -240,7 +258,7 @@ func handleHomeReq(req protocol.Request) protocol.Response {
 
 func initLogger() {
 	customFormatter := new(log.TextFormatter)
-	customFormatter.TimestampFormat = "2006-01-02 15:04:05"
+	customFormatter.TimestampFormat = "Jan _2 15:04:05.000000"
 	customFormatter.FullTimestamp = true
 	customFormatter.ForceColors = false
 	customFormatter.DisableColors = true
@@ -253,7 +271,8 @@ func initLogger() {
 	if err != nil {
 		log.Println(err)
 	}
-	log.SetOutput(io.MultiWriter(file, os.Stdout))
+	log.SetOutput(file)
+	//log.SetOutput(io.MultiWriter(file, os.Stdout))
 	log.SetLevel(LOG_LEVEL)
 }
 
