@@ -6,10 +6,13 @@ import (
 	"example.com/kendrick/common"
 	database "example.com/kendrick/database"
 	"example.com/kendrick/protocol"
+	log "github.com/sirupsen/logrus"
 	"io"
-	"log"
 	"net"
+	"os"
 )
+
+const LOG_LEVEL = log.InfoLevel
 
 // ********************************
 // *********** COMMON *************
@@ -18,17 +21,17 @@ func handleError(conn net.Conn, err error) {
 	if err != nil {
 		if err == io.EOF {
 			// connection closed by HTTP server
-			log.Println("Connection closed by HTTP server, exiting", err)
+			log.Error("Connection closed by HTTP server, exiting", err)
 			conn.Close()
 		} else if e, ok := err.(*net.OpError); ok {
 			if e.Timeout() {
 				// If SetDeadline triggers
-				log.Println("Timeout (likely from SetDeadline)", e)
+				log.Error("Timeout (likely from SetDeadline)", e)
 			} else {
-				log.Println(e)
+				log.Error(e)
 			}
 		} else {
-			log.Println(err)
+			log.Error(err)
 			//profiling.RecordLogin(err.Error() + "\n")
 		}
 	}
@@ -37,8 +40,10 @@ func handleError(conn net.Conn, err error) {
 func handleConn(conn net.Conn) {
 	defer conn.Close()
 	message, err := receiveData(conn)
+	log.Info("Received request", message)
 	handleError(conn, err)
 	response := handleData(message)
+	log.Info("Sending response", message)
 	err = sendResponse(response, conn)
 	handleError(conn, err)
 }
@@ -58,27 +63,29 @@ func handleData(req protocol.Request) protocol.Response {
 	case "HOME":
 		return handleHomeReq(req)
 	default:
-		common.Print("Unknown request source " + req.Type)
+		log.Error("Unknown request source " + req.Type)
 	}
 	return protocol.Response{}
 }
 
 func receiveData(conn net.Conn) (protocol.Request, error) {
+	log.Debug("Receiving request")
 	var m protocol.Request
 	err := gob.NewDecoder(conn).Decode(&m)
 	if err != nil {
 		return protocol.Request{}, err
 	}
-	//log.Println("RECEIVED REQUEST", m)
+	log.Debug("Received request", m)
 	return m, nil
 }
 
 func sendResponse(data protocol.Response, conn net.Conn) error {
+	log.Debug("Sending response", data)
 	err := gob.NewEncoder(conn).Encode(data)
 	if err != nil {
 		return err
 	}
-	//log.Println("SENT RESPONSE", data)
+	log.Debug("Sent response", data)
 	return nil
 }
 
@@ -87,7 +94,10 @@ func handleLoginReq(req protocol.Request) protocol.Response {
 	data := req.Data
 	username := data[protocol.Username]
 	pw := data[protocol.PwPlain]
-	common.Print("HANDLING LOGIN REQ: ", data)
+	log.WithFields(log.Fields{
+		protocol.Username: username,
+		protocol.PwPlain:  pw,
+	}).Debug("Handling login request")
 
 	if auth.IsValidPassword(username, pw) {
 		sid := auth.CreateSession(username)
@@ -99,7 +109,7 @@ func handleLoginReq(req protocol.Request) protocol.Response {
 			Description: "Login for " + username + " succeeded",
 			Data:        data,
 		}
-		common.Print("VALID PW, SENDING RESPONSE: ", res)
+		log.Debug("Valid password")
 		return res
 	}
 	res := protocol.Response{
@@ -107,7 +117,7 @@ func handleLoginReq(req protocol.Request) protocol.Response {
 		Description: "Login for " + username + " failed",
 		Data:        nil,
 	}
-	common.Print("INVALID PW, SENDING RESPONSE: ", res)
+	log.Debug("Invalid password")
 	return res
 }
 
@@ -117,7 +127,13 @@ func handleEditReq(req protocol.Request) protocol.Response {
 	nickname := data[protocol.Nickname]
 	picPath := data[protocol.ProfilePic]
 	username := auth.GetSessionUser(sid)
-	common.Print("HANDLING EDIT REQ: ", data)
+	log.WithFields(log.Fields{
+		protocol.RequestId:  req.Id,
+		protocol.SessionId:  sid,
+		protocol.Username:   username,
+		protocol.Nickname:   nickname,
+		protocol.ProfilePic: picPath,
+	}).Debug("Handling edit request")
 
 	// Find the username, and replace the relevant details
 	numRows := database.UpdateUser(username, nickname, picPath)
@@ -127,7 +143,7 @@ func handleEditReq(req protocol.Request) protocol.Response {
 			Description: "Edited " + username + " successfully",
 			Data:        nil,
 		}
-		common.Print("VALID EDIT, SENDING RESPONSE: ", res)
+		log.Debug("Valid edit")
 		return res
 	}
 	res := protocol.Response{
@@ -135,14 +151,17 @@ func handleEditReq(req protocol.Request) protocol.Response {
 		Description: "Editing " + username + " failed",
 		Data:        nil,
 	}
-	common.Print("INVALID EDIT, SENDING RESPONSE: ", res)
+	log.Debug("Invalid edit")
 	return res
 }
 
 func handleLogoutReq(req protocol.Request) protocol.Response {
 	data := req.Data
 	sid := data[protocol.SessionId]
-	common.Print("HANDLING LOGOUT REQ: ", data)
+	log.WithFields(log.Fields{
+		protocol.RequestId: req.Id,
+		protocol.SessionId: sid,
+	}).Debug("Handling logout request")
 
 	username := auth.DelSessionUser(sid)
 	res := protocol.Response{
@@ -150,7 +169,7 @@ func handleLogoutReq(req protocol.Request) protocol.Response {
 		Description: "Logged out: " + sid + " " + username,
 		Data:        nil,
 	}
-	common.Print("VALID LOGOUT, SENDING RESPONSE: ", res)
+	log.Debug("Valid logout")
 	return res
 }
 
@@ -159,7 +178,12 @@ func handleRegReq(req protocol.Request) protocol.Response {
 	nickname := data[protocol.Nickname]
 	username := data[protocol.Username]
 	password := data[protocol.PwHash]
-	common.Print("HANDLING REGISTER REQ: ", data)
+	log.WithFields(log.Fields{
+		protocol.RequestId: req.Id,
+		protocol.Username:  username,
+		protocol.PwHash:    password,
+		protocol.Nickname:  nickname,
+	}).Debug("Handling register request")
 
 	numRows := database.InsertUser(username, password, nickname)
 	if numRows == 1 {
@@ -168,7 +192,7 @@ func handleRegReq(req protocol.Request) protocol.Response {
 			Description: "INSERT: " + username + " " + password + " " + nickname,
 			Data:        nil,
 		}
-		common.Print("VALID REGISTER, SENDING RESPONSE: ", res)
+		log.Debug("Valid register")
 		return res
 	}
 	res := protocol.Response{
@@ -176,14 +200,17 @@ func handleRegReq(req protocol.Request) protocol.Response {
 		Description: "INSERT failed: " + username + " " + password + " " + nickname,
 		Data:        nil,
 	}
-	common.Print("INVALID REGISTER, SENDING RESPONSE: ", res)
+	log.Debug("Invalid register")
 	return res
 }
 
 func handleHomeReq(req protocol.Request) protocol.Response {
 	data := req.Data
 	sid := data[protocol.SessionId]
-	common.Print("HANDLING HOME REQ: ", data)
+	log.WithFields(log.Fields{
+		protocol.RequestId: req.Id,
+		protocol.SessionId: sid,
+	}).Debug("Handling home request")
 
 	username := auth.GetSessionUser(sid)
 	log.Println(sid, username)
@@ -199,7 +226,7 @@ func handleHomeReq(req protocol.Request) protocol.Response {
 			Description: "User " + username + " found!",
 			Data:        ret,
 		}
-		common.Print("VALID HOME, SENDING RESPONSE: ", response)
+		log.Debug("Valid home request")
 		return response
 	}
 	response := protocol.Response{
@@ -207,13 +234,33 @@ func handleHomeReq(req protocol.Request) protocol.Response {
 		Description: "User " + username + " not found...",
 		Data:        nil,
 	}
-	common.Print("INVALID HOME, SENDING RESPONSE: ", response)
+	log.Debug("Invalid home request")
 	return response
+}
+
+func initLogger() {
+	customFormatter := new(log.TextFormatter)
+	customFormatter.TimestampFormat = "2006-01-02 15:04:05"
+	customFormatter.FullTimestamp = true
+	customFormatter.ForceColors = false
+	customFormatter.DisableColors = true
+	log.SetFormatter(customFormatter)
+	err := os.Remove("tcp.txt")
+	if err != nil {
+		log.Println(err)
+	}
+	file, err := os.OpenFile("tcp.txt", os.O_TRUNC|os.O_CREATE|os.O_RDWR, 0666)
+	if err != nil {
+		log.Println(err)
+	}
+	log.SetOutput(io.MultiWriter(file, os.Stdout))
+	log.SetLevel(LOG_LEVEL)
 }
 
 func init() {
 	database.Connect()
 	database.DeleteSessions()
+	initLogger()
 }
 
 func main() {

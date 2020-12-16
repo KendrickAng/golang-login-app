@@ -11,7 +11,6 @@ const (
 )
 
 func Print(text string, data ...interface{}) {
-	return
 	if len(text) > 0 {
 		log.Println(LOG_PREFIX + text + LOG_SUFFIX)
 	}

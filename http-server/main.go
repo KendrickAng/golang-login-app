@@ -6,7 +6,6 @@ import (
 	"example.com/kendrick/auth"
 	"example.com/kendrick/common"
 	"example.com/kendrick/fileio"
-	"example.com/kendrick/profiling"
 	"example.com/kendrick/protocol"
 	"example.com/kendrick/security"
 	"fmt"
@@ -59,13 +58,13 @@ func handleError(conn net.Conn, err error) {
 	if err != nil {
 		if err == io.EOF {
 			// connection closed by TCP server
-			log.Println("EOF, closing connection", err)
+			log.Error("EOF, closing connection", err)
 			conn.Close()
 		} else if errors.Is(err, os.ErrDeadlineExceeded) {
 			// read deadline exceeded, do nothing
-			log.Println("OS Deadline Exceeded", err)
+			log.Error("OS Deadline Exceeded", err)
 		} else {
-			log.Println("Others", err)
+			log.Error("Others", err)
 		}
 	}
 }
@@ -73,7 +72,7 @@ func handleError(conn net.Conn, err error) {
 func getTcpConn() net.Conn {
 	conn, err := net.Dial("tcp", "127.0.0.1:9090")
 	if err != nil {
-		log.Println(err)
+		log.Error(err)
 	}
 	return conn
 }
@@ -83,15 +82,17 @@ func sendReq(conn net.Conn, data protocol.Request) error {
 	//if err != nil {
 	//	log.Fatalln(err)
 	//}
+	log.Debug("Sending request", data)
 	err := gob.NewEncoder(conn).Encode(&data)
-	common.Print("SENDING REQUEST: ", data)
 	if err != nil {
 		return err
 	}
+	log.Debug("Request sent", data)
 	return nil
 }
 
 func receiveRes(conn net.Conn) (protocol.Response, error) {
+	log.Debug("Receiving response")
 	err := conn.SetReadDeadline(time.Now().Add(TIMEOUT))
 	if err != nil {
 		return protocol.Response{}, err
@@ -105,7 +106,7 @@ func receiveRes(conn net.Conn) (protocol.Response, error) {
 	if err != nil {
 		return protocol.Response{}, err
 	}
-	common.Print("RECEIVED RESPONSE: ", res)
+	log.Debug("Received response", res)
 	//if err == io.EOF {
 	//	common.Print("EOF WHEN READING RESPONSE", nil)
 	//	return protocol.Response{
@@ -129,21 +130,28 @@ func receiveRes(conn net.Conn) (protocol.Response, error) {
 // *********** LOGIN *************
 // *******************************
 func createLoginReq(r *http.Request) protocol.Request {
+	log.Debug("Creating login request")
 	username := r.FormValue("username")
 	password := r.FormValue("password")
+	rid := r.Header.Get(protocol.RequestIdHeader)
 	ret := make(map[string]string)
 	ret[protocol.Username] = username
 	ret[protocol.PwPlain] = password
 	req := protocol.Request{
+		Id:   rid,
 		Type: "LOGIN",
 		Data: ret,
 	}
-	common.Print("CREATED LOGIN REQ: ", req)
+	log.WithFields(log.Fields{
+		protocol.RequestId: rid,
+		protocol.Username:  username,
+		protocol.PwPlain:   password,
+	}).Debug("Created login request")
 	return req
 }
 
 func processLoginRes(w http.ResponseWriter, r *http.Request, res protocol.Response) {
-	common.Print("PROCESSING LOGIN RES: ", res)
+	log.Debug("Processing login response", res)
 	if res.Code != protocol.CREDENTIALS_INVALID {
 		qs := common.CreateQueryString("No such account, please register first!")
 		http.Redirect(w, r, "/register"+qs, http.StatusSeeOther)
@@ -155,38 +163,40 @@ func processLoginRes(w http.ResponseWriter, r *http.Request, res protocol.Respon
 		Value: sid,
 	})
 	http.Redirect(w, r, "/home", http.StatusSeeOther)
+	log.Debug("Processed login response")
 	return
 }
 
 // Main handler called when logging in
 func login(w http.ResponseWriter, r *http.Request) {
 	if auth.IsLoggedIn(getSid(r)) {
-		log.Println("You shouldn't be here.")
 		http.Redirect(w, r, "/home", http.StatusSeeOther)
 		return
 	}
 
 	req := createLoginReq(r)
+	log.Info("Create login request", req)
 	conn := getTcpConn()
 	defer conn.Close()
 	err := sendReq(conn, req)
 	if err != nil {
-		log.Println("In request")
+		log.Info("In request")
 		handleError(conn, err)
 		qs := common.CreateQueryString("Login failed, please try again in a while")
 		http.Redirect(w, r, "/login"+qs, http.StatusSeeOther)
 		return
 	}
 	res, err := receiveRes(conn)
+	log.Info("Receive login response", req)
 	if err != nil {
-		log.Println("In response")
+		log.Info("In response")
 		handleError(conn, err)
 		qs := common.CreateQueryString("Login failed, please try again in a while")
 		http.Redirect(w, r, "/login"+qs, http.StatusSeeOther)
 		return
 	}
 	processLoginRes(w, r, res)
-	log.Println("Request handled!")
+	log.Info("Request handled!")
 }
 
 // ******************************
@@ -223,7 +233,7 @@ func createEditReq(r *http.Request) (protocol.Request, error) {
 	nickname := r.FormValue("nickname")
 	file, header, err := r.FormFile("pic")
 	if err != nil {
-		log.Fatalln(err)
+		log.Error(err)
 	}
 	// enforce max size
 	if header.Size > IMG_MAXSIZE {
@@ -231,7 +241,6 @@ func createEditReq(r *http.Request) (protocol.Request, error) {
 		return protocol.Request{}, err
 	}
 	defer file.Close()
-	common.Print("FILE INFORMATION: ", header)
 
 	// store image persistently
 	cookie, err := r.Cookie(auth.SESS_COOKIE_NAME)
@@ -239,7 +248,6 @@ func createEditReq(r *http.Request) (protocol.Request, error) {
 		log.Fatalln(err)
 	}
 	imgPath := fileio.ImageUpload(file, auth.GetSessionUser(cookie.Value))
-	common.Print("PROFILE PICTURE UPLOADED: " + imgPath)
 
 	// create return data
 	ret := make(map[string]string)
@@ -250,7 +258,7 @@ func createEditReq(r *http.Request) (protocol.Request, error) {
 		Type: "EDIT",
 		Data: ret,
 	}
-	common.Print("CREATED EDIT REQUEST: ", req)
+	log.Debug("CREATED EDIT REQUEST: ", req)
 	return req, nil
 }
 
@@ -404,7 +412,6 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		desc := r.URL.Query().Get("desc")
 		renderTemplate(w, "login", desc)
 	case http.MethodPost:
-		// profiling.RecordLogin("LOGIN")
 		login(w, r)
 	default:
 		log.Fatalln("Unused method" + r.Method)
@@ -455,39 +462,39 @@ func logoutHandler(w http.ResponseWriter, r *http.Request) {
 	//logout(w, r)
 }
 
-func initLogger() *log.Logger {
+func initLogger() {
 	customFormatter := new(log.TextFormatter)
 	customFormatter.TimestampFormat = "2006-01-02 15:04:05"
 	customFormatter.FullTimestamp = true
 	customFormatter.ForceColors = false
-	logger = log.New()
-	logger.SetFormatter(customFormatter)
-	err := os.Remove("http.log")
-	if err, ok := err.(*os.PathError); ok {
-		log.Println(err.Error())
+	customFormatter.DisableColors = true
+	//logger = log.New()
+	log.SetFormatter(customFormatter)
+	err := os.Remove("http.txt")
+	if err != nil {
+		log.Println(err)
 	}
-	file, err := os.OpenFile("http.log", os.O_TRUNC|os.O_CREATE|os.O_RDWR, 0666)
-	if err, ok := err.(*os.PathError); ok {
-		log.Println(err.Error())
+	file, err := os.OpenFile("http.txt", os.O_TRUNC|os.O_CREATE|os.O_RDWR, 0666)
+	if err != nil {
+		log.Println(err)
 	}
-	logger.SetOutput(io.MultiWriter(file, os.Stdout))
-	logger.SetLevel(LOG_LEVEL)
-	return logger
+	log.SetOutput(io.MultiWriter(file, os.Stdout))
+	log.SetLevel(LOG_LEVEL)
 }
 
 func init() {
 	templates = template.Must(template.ParseGlob("templates/*.html"))
 	// database.Connect()
-	profiling.InitLogFiles()
-	logger = initLogger()
+	//profiling.InitLogFiles()
+	initLogger()
 }
 
 func withRequestId(handler httpHandler) httpHandler {
 	return func(w http.ResponseWriter, r *http.Request) {
-		rid := r.Header.Get("X-Request-ID")
+		rid := r.Header.Get(protocol.RequestIdHeader)
 		if rid == "" {
 			rid = uuid.NewV4().String()
-			r.Header.Set("X-Request-ID", rid)
+			r.Header.Set(protocol.RequestIdHeader, rid)
 		}
 		handler(w, r)
 	}

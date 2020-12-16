@@ -1,7 +1,6 @@
 package profiling
 
 import (
-	"example.com/kendrick/common"
 	"example.com/kendrick/fileio"
 	"log"
 	"os"
@@ -16,7 +15,7 @@ var LOGIN_LOGFILE string = path.Join(fileio.RootDir(), "loginsLog.txt")
 func InitLogFiles() {
 	deleteFile(LOGIN_LOGFILE)
 	createFile(LOGIN_LOGFILE)
-	common.Print("INIT FRESH LOG FILE " + LOGIN_LOGFILE)
+	log.Println("INIT FRESH LOG FILE " + LOGIN_LOGFILE)
 }
 
 func RecordLogin(str string) {

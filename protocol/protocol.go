@@ -1,12 +1,14 @@
 package protocol
 
 const (
-	Username   = "username"
-	Nickname   = "nickname"
-	PwPlain    = "password"
-	PwHash     = "pwhash"
-	ProfilePic = "profilepic"
-	SessionId  = "sessionid"
+	Username        = "username"
+	Nickname        = "nickname"
+	PwPlain         = "pw"
+	PwHash          = "pwhash"
+	ProfilePic      = "profilepic"
+	SessionId       = "sid"
+	RequestId       = "rid"
+	RequestIdHeader = "X-Request-ID"
 )
 
 type User struct {
@@ -22,11 +24,13 @@ type Session struct {
 }
 
 type Request struct {
+	Id   string // uuid for logging
 	Type string
 	Data map[string]string
 }
 
 type Response struct {
+	Id          string //uuid for logging
 	Code        int
 	Description string
 	Data        map[string]string
