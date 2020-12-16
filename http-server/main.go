@@ -50,49 +50,74 @@ func renderTemplate(w http.ResponseWriter, tmpl string, data interface{}) {
 	}
 }
 
-func handleError(err error) {
+func handleError(conn net.Conn, err error) {
 	if err != nil {
-		log.Println(err.Error())
+		if err == io.EOF {
+			// connection closed by TCP server
+			log.Println("EOF, closing connection", err)
+			conn.Close()
+		} else if errors.Is(err, os.ErrDeadlineExceeded) {
+			// read deadline exceeded, do nothing
+			log.Println("OS Deadline Exceeded", err)
+		} else {
+			log.Println("Others", err)
+		}
 	}
 }
 
-func sendReq(data protocol.Request) net.Conn {
-	conn, err := net.Dial("tcp", "localhost:8081")
-	if err != nil {
-		log.Fatalln(err)
-	}
-	err = gob.NewEncoder(conn).Encode(&data)
-	common.Print("SENDING REQUEST: ", data)
+func getTcpConn() net.Conn {
+	conn, err := net.Dial("tcp", "127.0.0.1:9090")
 	if err != nil {
 		log.Println(err)
 	}
 	return conn
 }
 
-func receiveRes(conn net.Conn) protocol.Response {
-	err := conn.SetDeadline(time.Now().Add(TIMEOUT))
-	handleError(err)
+func sendReq(conn net.Conn, data protocol.Request) error {
+	//conn, err := net.Dial("tcp", "localhost:8081")
+	//if err != nil {
+	//	log.Fatalln(err)
+	//}
+	err := gob.NewEncoder(conn).Encode(&data)
+	common.Print("SENDING REQUEST: ", data)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func receiveRes(conn net.Conn) (protocol.Response, error) {
+	err := conn.SetReadDeadline(time.Now().Add(TIMEOUT))
+	if err != nil {
+		return protocol.Response{}, err
+	}
 	var res protocol.Response
 	err = gob.NewDecoder(conn).Decode(&res)
-	if err == io.EOF {
-		common.Print("EOF WHEN READING RESPONSE", nil)
-		return protocol.Response{
-			Code:        protocol.TCP_CONNECTION_CLOSED,
-			Description: "TCP Server closed connection, EOF when reading response",
-			Data:        nil,
-		}
-	} else if errors.Is(err, os.ErrDeadlineExceeded) {
-		return protocol.Response{
-			Code:        protocol.TCP_SERVER_TIMEOUT,
-			Description: "TCP Server timeout after " + strconv.FormatInt(int64(TIMEOUT), 10) + " seconds",
-			Data:        nil,
-		}
-	} else {
-		handleError(err)
+	if err != nil {
+		return protocol.Response{}, err
+	}
+	err = conn.SetReadDeadline(time.Time{})
+	if err != nil {
+		return protocol.Response{}, err
 	}
 	common.Print("RECEIVED RESPONSE: ", res)
-	//err = conn.SetDeadline(time.Time{})
-	return res
+	//if err == io.EOF {
+	//	common.Print("EOF WHEN READING RESPONSE", nil)
+	//	return protocol.Response{
+	//		Code:        protocol.TCP_CONNECTION_CLOSED,
+	//		Description: "TCP Server closed connection, EOF when reading response",
+	//		Data:        nil,
+	//	}
+	//} else if errors.Is(err, os.ErrDeadlineExceeded) {
+	//	return protocol.Response{
+	//		Code:        protocol.TCP_SERVER_TIMEOUT,
+	//		Description: "TCP Server timeout after " + strconv.FormatInt(int64(TIMEOUT), 10) + " seconds",
+	//		Data:        nil,
+	//	}
+	//} else {
+	//	handleError(err)
+	//}
+	return res, nil
 }
 
 // *******************************
@@ -131,32 +156,62 @@ func processLoginRes(w http.ResponseWriter, r *http.Request, res protocol.Respon
 // Main handler called when logging in
 func login(w http.ResponseWriter, r *http.Request) {
 	if auth.IsLoggedIn(getSid(r)) {
+		log.Println("You shouldn't be here.")
 		http.Redirect(w, r, "/home", http.StatusSeeOther)
 		return
 	}
 
 	req := createLoginReq(r)
-	conn := sendReq(req)
+	conn := getTcpConn()
 	defer conn.Close()
-	res := receiveRes(conn)
+	err := sendReq(conn, req)
+	if err != nil {
+		log.Println("In request")
+		handleError(conn, err)
+		qs := common.CreateQueryString("Login failed, please try again in a while")
+		http.Redirect(w, r, "/login"+qs, http.StatusSeeOther)
+		return
+	}
+	res, err := receiveRes(conn)
+	if err != nil {
+		log.Println("In response")
+		handleError(conn, err)
+		qs := common.CreateQueryString("Login failed, please try again in a while")
+		http.Redirect(w, r, "/login"+qs, http.StatusSeeOther)
+		return
+	}
 	processLoginRes(w, r, res)
+	log.Println("Request handled!")
 }
 
 // ******************************
 // *********** EDIT *************
 // ******************************
-func edit(w http.ResponseWriter, r *http.Request) {
-	req, err := createEditReq(r)
-	if err != nil {
-		common.Print(err.Error())
-		http.Redirect(w, r, "/edit"+common.CreateQueryString(err.Error()), http.StatusSeeOther)
-		return
-	}
-	conn := sendReq(req)
-	defer conn.Close()
-	res := receiveRes(conn)
-	processEditRes(w, r, res)
-}
+//func edit(w http.ResponseWriter, r *http.Request) {
+//	req, err := createEditReq(r)
+//	if err != nil {
+//		log.Println(err)
+//		http.Redirect(w, r, "/edit"+common.CreateQueryString(err.Error()), http.StatusSeeOther)
+//		return
+//	}
+//	conn := getTcpConn()
+//	defer conn.Close()
+//	err = sendReq(conn, req)
+//	if err != nil {
+//		handleError(conn, err)
+//		qs := common.CreateQueryString("Edit failed, please try again in a while")
+//		http.Redirect(w, r, "/edit" + qs, http.StatusSeeOther)
+//		return
+//	}
+//	res, err := receiveRes(conn)
+//	if err != nil {
+//		handleError(conn, err)
+//		qs := common.CreateQueryString("Edit failed, please try again in a while")
+//		http.Redirect(w, r, "/edit" + qs, http.StatusSeeOther)
+//		return
+//	}
+//	processEditRes(w, r, res)
+//}
 
 func createEditReq(r *http.Request) (protocol.Request, error) {
 	// retrieve form values
@@ -209,13 +264,15 @@ func processEditRes(w http.ResponseWriter, r *http.Request, res protocol.Respons
 // **********************************
 // *********** REGISTER *************
 // **********************************
-func registerUser(w http.ResponseWriter, r *http.Request) {
-	req := createRegisterReq(r)
-	conn := sendReq(req)
-	res := receiveRes(conn)
-	processRegisterRes(w, r, res)
-	conn.Close()
-}
+//func registerUser(w http.ResponseWriter, r *http.Request) {
+//	req := createRegisterReq(r)
+//	conn := getTcpConn()
+//	defer conn.Close()
+//	// TODO
+//	_ = sendReq(conn, req)
+//	res, _ := receiveRes(conn)
+//	processRegisterRes(w, r, res)
+//}
 
 func createRegisterReq(r *http.Request) protocol.Request {
 	username := r.FormValue("username")
@@ -250,13 +307,15 @@ func processRegisterRes(w http.ResponseWriter, r *http.Request, res protocol.Res
 // ********************************
 // *********** LOGOUT *************
 // ********************************
-func logout(w http.ResponseWriter, r *http.Request) {
-	req := createLogoutReq(r)
-	conn := sendReq(req)
-	res := receiveRes(conn)
-	processLogoutRes(w, r, res)
-	conn.Close()
-}
+//func logout(w http.ResponseWriter, r *http.Request) {
+//	req := createLogoutReq(r)
+//	conn := getTcpConn()
+//	defer conn.Close()
+//	// TODO
+//	_ = sendReq(conn, req)
+//	res, _ := receiveRes(conn)
+//	processLogoutRes(w, r, res)
+//}
 
 func createLogoutReq(r *http.Request) protocol.Request {
 	c, _ := r.Cookie(auth.SESS_COOKIE_NAME)
@@ -289,13 +348,15 @@ func processLogoutRes(w http.ResponseWriter, r *http.Request, res protocol.Respo
 // ******************************
 // *********** HOME *************
 // ******************************
-func home(w http.ResponseWriter, r *http.Request) {
-	req := createHomeReq(r)
-	conn := sendReq(req)
-	defer conn.Close()
-	res := receiveRes(conn)
-	processHomeRes(w, r, res)
-}
+//func home(w http.ResponseWriter, r *http.Request) {
+//	req := createHomeReq(r)
+//	conn := getTcpConn()
+//	defer conn.Close()
+//	// TODO
+//	_ = sendReq(conn, req)
+//	res, _ := receiveRes(conn)
+//	processHomeRes(w, r, res)
+//}
 
 // retrieves the current user based on session cookie.
 func createHomeReq(r *http.Request) protocol.Request {
@@ -355,7 +416,7 @@ func editHandler(w http.ResponseWriter, r *http.Request) {
 		desc := r.URL.Query().Get("desc")
 		renderTemplate(w, "edit", desc)
 	case http.MethodPost:
-		edit(w, r)
+		//edit(w, r)
 	default:
 		log.Fatalln("Unused method " + r.Method)
 	}
@@ -367,7 +428,7 @@ func registerHandler(w http.ResponseWriter, r *http.Request) {
 		desc := r.URL.Query().Get("desc")
 		renderTemplate(w, "register", desc)
 	case http.MethodPost:
-		registerUser(w, r)
+		//registerUser(w, r)
 	default:
 		log.Fatalln("Unused method " + r.Method)
 	}
@@ -378,7 +439,7 @@ func homeHandler(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
-	home(w, r)
+	//home(w, r)
 }
 
 func logoutHandler(w http.ResponseWriter, r *http.Request) {
@@ -386,7 +447,7 @@ func logoutHandler(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
-	logout(w, r)
+	//logout(w, r)
 }
 
 func init() {

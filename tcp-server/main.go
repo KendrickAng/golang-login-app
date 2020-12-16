@@ -6,6 +6,7 @@ import (
 	"example.com/kendrick/common"
 	database "example.com/kendrick/database"
 	"example.com/kendrick/protocol"
+	"io"
 	"log"
 	"net"
 )
@@ -13,22 +14,33 @@ import (
 // ********************************
 // *********** COMMON *************
 // ********************************
-func handleConnError(err error) {
+func handleError(conn net.Conn, err error) {
 	if err != nil {
-		log.Println(err.Error())
-		if e, ok := err.(*net.OpError); ok {
-			log.Println(e.Error())
+		if err == io.EOF {
+			// connection closed by HTTP server
+			log.Println("Connection closed by HTTP server, exiting", err)
+			conn.Close()
+		} else if e, ok := err.(*net.OpError); ok {
+			if e.Timeout() {
+				// If SetDeadline triggers
+				log.Println("Timeout (likely from SetDeadline)", e)
+			} else {
+				log.Println(e)
+			}
+		} else {
+			log.Println(err)
+			//profiling.RecordLogin(err.Error() + "\n")
 		}
-		//profiling.RecordLogin(err.Error() + "\n")
 	}
 }
 
 func handleConn(conn net.Conn) {
 	defer conn.Close()
 	message, err := receiveData(conn)
-	handleConnError(err)
+	handleError(conn, err)
 	response := handleData(message)
-	sendResponse(response, conn)
+	err = sendResponse(response, conn)
+	handleError(conn, err)
 }
 
 // Invokes the relevant request handler
@@ -57,14 +69,17 @@ func receiveData(conn net.Conn) (protocol.Request, error) {
 	if err != nil {
 		return protocol.Request{}, err
 	}
+	//log.Println("RECEIVED REQUEST", m)
 	return m, nil
 }
 
-func sendResponse(data protocol.Response, conn net.Conn) {
+func sendResponse(data protocol.Response, conn net.Conn) error {
 	err := gob.NewEncoder(conn).Encode(data)
 	if err != nil {
-		log.Println(err)
+		return err
 	}
+	//log.Println("SENT RESPONSE", data)
+	return nil
 }
 
 // Checks the validity of username and password hash in login request.
@@ -202,8 +217,8 @@ func init() {
 }
 
 func main() {
-	common.Print("TCP Server listening on port 8081", nil)
-	ln, err := net.Listen("tcp", ":8081")
+	common.Print("TCP Server listening on port 9090", nil)
+	ln, err := net.Listen("tcp", ":9090")
 	if err != nil {
 		log.Panicln(err)
 	}
