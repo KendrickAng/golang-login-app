@@ -10,9 +10,10 @@ import (
 	"example.com/kendrick/protocol"
 	"example.com/kendrick/security"
 	"fmt"
+	"github.com/satori/uuid"
+	log "github.com/sirupsen/logrus"
 	"html/template"
 	"io"
-	"log"
 	_ "mime/multipart"
 	"net"
 	"net/http"
@@ -26,9 +27,13 @@ import (
 const (
 	TIMEOUT     = time.Second * 7
 	IMG_MAXSIZE = 1 << 12 // 2^12
+	LOG_LEVEL   = log.InfoLevel
 )
 
+type httpHandler = func(w http.ResponseWriter, r *http.Request)
+
 var templates *template.Template
+var logger *log.Logger
 
 // ********************************
 // *********** COMMON *************
@@ -450,16 +455,48 @@ func logoutHandler(w http.ResponseWriter, r *http.Request) {
 	//logout(w, r)
 }
 
+func initLogger() *log.Logger {
+	customFormatter := new(log.TextFormatter)
+	customFormatter.TimestampFormat = "2006-01-02 15:04:05"
+	customFormatter.FullTimestamp = true
+	customFormatter.ForceColors = false
+	logger = log.New()
+	logger.SetFormatter(customFormatter)
+	err := os.Remove("http.log")
+	if err, ok := err.(*os.PathError); ok {
+		log.Println(err.Error())
+	}
+	file, err := os.OpenFile("http.log", os.O_TRUNC|os.O_CREATE|os.O_RDWR, 0666)
+	if err, ok := err.(*os.PathError); ok {
+		log.Println(err.Error())
+	}
+	logger.SetOutput(io.MultiWriter(file, os.Stdout))
+	logger.SetLevel(LOG_LEVEL)
+	return logger
+}
+
 func init() {
 	templates = template.Must(template.ParseGlob("templates/*.html"))
 	// database.Connect()
 	profiling.InitLogFiles()
+	logger = initLogger()
+}
+
+func withRequestId(handler httpHandler) httpHandler {
+	return func(w http.ResponseWriter, r *http.Request) {
+		rid := r.Header.Get("X-Request-ID")
+		if rid == "" {
+			rid = uuid.NewV4().String()
+			r.Header.Set("X-Request-ID", rid)
+		}
+		handler(w, r)
+	}
 }
 
 func main() {
 	// have the server listen on required routes
 	http.HandleFunc("/", rootHandler)
-	http.HandleFunc("/login", loginHandler)
+	http.HandleFunc("/login", withRequestId(loginHandler))
 	http.HandleFunc("/logout", logoutHandler)
 	http.HandleFunc("/home", homeHandler)
 	http.HandleFunc("/edit", editHandler)
