@@ -22,7 +22,7 @@ func ReadPw() string {
 	return string(data)
 }
 
-// saves the image to the http-server/assets/ directory. Returns relative filepath if success
+// saves the image to the http_server/assets/ directory. Returns relative filepath if success
 func ImageUpload(file multipart.File, suffix string) string {
 	img := fileToImage(file)
 	pathsuffix, dest := createAssetsFile(suffix)

@@ -3,14 +3,18 @@ package main
 import (
 	"encoding/gob"
 	"example.com/kendrick/auth"
-	"example.com/kendrick/common"
 	database "example.com/kendrick/database"
 	"example.com/kendrick/protocol"
+	"fmt"
 	log "github.com/sirupsen/logrus"
 	"io"
 	"net"
 	"os"
 )
+
+type TCPServer struct {
+	Port string
+}
 
 const LOG_LEVEL = log.DebugLevel
 
@@ -271,24 +275,21 @@ func initLogger() {
 	if err != nil {
 		log.Println(err)
 	}
-	log.SetOutput(file)
-	//log.SetOutput(io.MultiWriter(file, os.Stdout))
+	//log.SetOutput(file)
+	log.SetOutput(io.MultiWriter(file, os.Stdout))
 	log.SetLevel(LOG_LEVEL)
 }
 
-func init() {
+func (srv *TCPServer) Start() {
 	database.Connect()
 	database.DeleteSessions()
 	initLogger()
-}
 
-func main() {
-	common.Print("TCP Server listening on port 9090", nil)
-	ln, err := net.Listen("tcp", ":9090")
+	log.Info("TCP Server listening on port ", srv.Port)
+	ln, err := net.Listen("tcp", fmt.Sprintf(":%v", srv.Port))
 	if err != nil {
 		log.Panicln(err)
 	}
-	defer database.Disconnect()
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
@@ -296,4 +297,15 @@ func main() {
 		}
 		go handleConn(conn)
 	}
+}
+
+func (srv *TCPServer) Stop() {
+	database.Disconnect()
+	log.Info("HTTP server stopped.")
+}
+
+func main() {
+	server := TCPServer{Port: "9090"}
+	defer server.Stop()
+	server.Start()
 }

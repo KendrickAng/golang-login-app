@@ -29,7 +29,9 @@ const (
 	LOG_LEVEL   = log.DebugLevel
 )
 
-type httpHandler = func(w http.ResponseWriter, r *http.Request)
+type HTTPServer struct {
+	Port string
+}
 
 var templates *template.Template
 var logger *log.Logger
@@ -479,19 +481,12 @@ func initLogger() {
 	if err != nil {
 		log.Println(err)
 	}
-	log.SetOutput(file)
-	//log.SetOutput(io.MultiWriter(file, os.Stdout))
+	//log.SetOutput(file)
+	log.SetOutput(io.MultiWriter(file, os.Stdout))
 	log.SetLevel(LOG_LEVEL)
 }
 
-func init() {
-	templates = template.Must(template.ParseGlob("templates/*.html"))
-	// database.Connect()
-	//profiling.InitLogFiles()
-	initLogger()
-}
-
-func withRequestId(handler httpHandler) httpHandler {
+func withRequestId(handler http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		rid := r.Header.Get(protocol.RequestIdHeader)
 		if rid == "" {
@@ -502,7 +497,14 @@ func withRequestId(handler httpHandler) httpHandler {
 	}
 }
 
-func main() {
+func (srv *HTTPServer) Start() {
+	templates = template.Must(template.ParseGlob("templates/*.html"))
+	//database.Connect()
+	//profiling.InitLogFiles()
+	initLogger()
+
+	log.Info("HTTP server listening on port ", srv.Port)
+
 	// have the server listen on required routes
 	http.HandleFunc("/", rootHandler)
 	http.HandleFunc("/login", withRequestId(loginHandler))
@@ -511,5 +513,15 @@ func main() {
 	http.HandleFunc("/edit", editHandler)
 	http.HandleFunc("/register", registerHandler)
 	http.Handle("/assets/", http.StripPrefix("/assets", http.FileServer(http.Dir("./assets"))))
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%v", srv.Port), nil))
+}
+
+func (srv *HTTPServer) Stop() {
+	log.Info("HTTP server stopped.")
+}
+
+func main() {
+	server := HTTPServer{Port: "8080"}
+	defer server.Stop()
+	server.Start()
 }
