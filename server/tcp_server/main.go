@@ -10,6 +10,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"time"
 )
 
 type TCPServer struct {
@@ -26,7 +27,7 @@ func handleError(rid string, conn net.Conn, err error) {
 		logger := log.WithFields(log.Fields{protocol.RequestId: rid})
 		if err == io.EOF {
 			// connection closed by HTTP server
-			logger.Error(err)
+			logger.Error(err, " closing connection")
 			conn.Close()
 		} else if e, ok := err.(*net.OpError); ok {
 			if e.Timeout() {
@@ -42,23 +43,27 @@ func handleError(rid string, conn net.Conn, err error) {
 }
 
 func handleConn(conn net.Conn) {
-	defer conn.Close()
-	message, err := receiveData(conn)
-	if err != nil {
-		log.Info("Receive request failed", message)
-		handleError(message.Id, conn, err)
-		return
+	// TODO: don't close the conn, persist
+	for {
+		log.Error("Receive data")
+		message, err := receiveData(conn)
+		log.Error("You should not be here")
+		if err != nil {
+			log.Info("Receive request failed", message)
+			handleError(message.Id, conn, err)
+			return
+		}
+		log.Info("Receive request success", message)
+		response := handleData(message)
+		log.Info("Sending response", message)
+		err = sendResponse(response, conn)
+		if err != nil {
+			log.Info("Send response failed", message)
+			handleError(message.Id, conn, err)
+			return
+		}
+		log.Info("Send response success", message)
 	}
-	log.Info("Receive request success", message)
-	response := handleData(message)
-	log.Info("Sending response", message)
-	err = sendResponse(response, conn)
-	if err != nil {
-		log.Info("Send response failed", message)
-		handleError(message.Id, conn, err)
-		return
-	}
-	log.Info("Send response success", message)
 }
 
 // Invokes the relevant request handler
@@ -271,12 +276,14 @@ func initLogger() {
 	if err != nil {
 		log.Println(err)
 	}
-	file, err := os.OpenFile("tcp.txt", os.O_TRUNC|os.O_CREATE|os.O_RDWR, 0666)
+	_, err = os.OpenFile("tcp.txt", os.O_TRUNC|os.O_CREATE|os.O_RDWR, 0666)
+	//file, err := os.OpenFile("tcp.txt", os.O_TRUNC|os.O_CREATE|os.O_RDWR, 0666)
 	if err != nil {
 		log.Println(err)
 	}
+	//log.SetOutput(ioutil.Discard)
 	//log.SetOutput(file)
-	log.SetOutput(io.MultiWriter(file, os.Stdout))
+	//log.SetOutput(io.MultiWriter(file, os.Stdout))
 	log.SetLevel(LOG_LEVEL)
 }
 
@@ -294,6 +301,10 @@ func (srv *TCPServer) Start() {
 		conn, err := ln.Accept()
 		if err != nil {
 			log.Panicln(err)
+		}
+		if c, ok := conn.(*net.TCPConn); ok {
+			c.SetKeepAlive(true)
+			c.SetKeepAlivePeriod(time.Second * 60)
 		}
 		go handleConn(conn)
 	}

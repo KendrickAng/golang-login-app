@@ -8,8 +8,10 @@ import (
 	"example.com/kendrick/fileio"
 	"example.com/kendrick/protocol"
 	"example.com/kendrick/security"
+	"example.com/kendrick/server/pool"
 	"fmt"
 	"github.com/satori/uuid"
+	poolSP "github.com/silenceper/pool"
 	log "github.com/sirupsen/logrus"
 	"html/template"
 	"io"
@@ -30,7 +32,9 @@ const (
 )
 
 type HTTPServer struct {
-	Port string
+	TcpPool  pool.Pool
+	Hostname string
+	Port     string
 }
 
 var templates *template.Template
@@ -56,13 +60,21 @@ func renderTemplate(w http.ResponseWriter, tmpl string, data interface{}) {
 	}
 }
 
-func handleError(rid string, conn net.Conn, err error) {
+func (srv *HTTPServer) handleError(rid string, conn net.Conn, err error) {
 	if err != nil {
 		logger := log.WithFields(log.Fields{protocol.RequestId: rid})
 		if err == io.EOF {
-			// connection closed by TCP server
+			// connection closed by TCP server - tell the pool to destroy connection
 			logger.Error(err)
-			conn.Close()
+			err := srv.TcpPool.Destroy(conn)
+			if err != nil {
+				logger.Error(err)
+			}
+			//srv.TcpPool.Close(conn)
+			//if err != nil {
+			//	logger.Error(err)
+			//}
+			//conn.Close()
 		} else if errors.Is(err, os.ErrDeadlineExceeded) {
 			// read deadline exceeded, do nothing
 			logger.Error(err)
@@ -72,12 +84,20 @@ func handleError(rid string, conn net.Conn, err error) {
 	}
 }
 
-func getTcpConn() net.Conn {
+func (srv *HTTPServer) getTcpConnPooled() (net.Conn, error) {
+	conn, err := srv.TcpPool.Get()
+	if err != nil {
+		return nil, err
+	}
+	return conn, err
+}
+
+func (srv *HTTPServer) getTcpConn() (net.Conn, error) {
 	conn, err := net.Dial("tcp", "127.0.0.1:9090")
 	if err != nil {
-		log.Error(err)
+		return nil, err
 	}
-	return conn
+	return conn, err
 }
 
 func sendReq(conn net.Conn, data protocol.Request) error {
@@ -132,6 +152,46 @@ func receiveRes(conn net.Conn) (protocol.Response, error) {
 // *******************************
 // *********** LOGIN *************
 // *******************************
+// Main handler called when logging in
+func (srv *HTTPServer) login(w http.ResponseWriter, r *http.Request) {
+	if auth.IsLoggedIn(getSid(r)) {
+		http.Redirect(w, r, "/home", http.StatusSeeOther)
+		return
+	}
+	req := createLoginReq(r)
+	log.Info("Create login request", req)
+	conn, err := srv.getTcpConnPooled()
+	if err != nil {
+		log.Debug("In getTcpConn")
+		srv.handleError(req.Id, conn, err)
+		qs := common.CreateQueryString("Login failed, please try again in a while")
+		http.Redirect(w, r, "/login"+qs, http.StatusSeeOther)
+		return
+	}
+	// TODO: should put back to pool instead
+	//defer srv.TcpPool.Put(conn)
+	defer srv.TcpPool.Put(conn)
+	err = sendReq(conn, req)
+	if err != nil {
+		log.Debug("In request")
+		srv.handleError(req.Id, conn, err)
+		qs := common.CreateQueryString("Login failed, please try again in a while")
+		http.Redirect(w, r, "/login"+qs, http.StatusSeeOther)
+		return
+	}
+	res, err := receiveRes(conn)
+	log.Info("Receive login response", res)
+	if err != nil {
+		log.Info("In response")
+		srv.handleError(req.Id, conn, err)
+		qs := common.CreateQueryString("Login failed, please try again in a while")
+		http.Redirect(w, r, "/login"+qs, http.StatusSeeOther)
+		return
+	}
+	processLoginRes(w, r, res)
+	log.WithField(protocol.RequestId, req.Id).Info("Connection closed")
+}
+
 func createLoginReq(r *http.Request) protocol.Request {
 	log.Debug("Creating login request")
 	username := r.FormValue("username")
@@ -169,37 +229,6 @@ func processLoginRes(w http.ResponseWriter, r *http.Request, res protocol.Respon
 	http.Redirect(w, r, "/home", http.StatusSeeOther)
 	logger.Debug("Processed login response")
 	return
-}
-
-// Main handler called when logging in
-func login(w http.ResponseWriter, r *http.Request) {
-	if auth.IsLoggedIn(getSid(r)) {
-		http.Redirect(w, r, "/home", http.StatusSeeOther)
-		return
-	}
-	req := createLoginReq(r)
-	log.Info("Create login request", req)
-	conn := getTcpConn()
-	defer conn.Close()
-	err := sendReq(conn, req)
-	if err != nil {
-		log.Info("In request")
-		handleError(req.Id, conn, err)
-		qs := common.CreateQueryString("Login failed, please try again in a while")
-		http.Redirect(w, r, "/login"+qs, http.StatusSeeOther)
-		return
-	}
-	res, err := receiveRes(conn)
-	log.Info("Receive login response", res)
-	if err != nil {
-		log.Info("In response")
-		handleError(req.Id, conn, err)
-		qs := common.CreateQueryString("Login failed, please try again in a while")
-		http.Redirect(w, r, "/login"+qs, http.StatusSeeOther)
-		return
-	}
-	processLoginRes(w, r, res)
-	log.WithField(protocol.RequestId, req.Id).Info("Connection closed")
 }
 
 // ******************************
@@ -405,23 +434,23 @@ func processHomeRes(w http.ResponseWriter, r *http.Request, res protocol.Respons
 // ***************************************
 // *********** HTTP HANDLERS *************
 // ***************************************
-func rootHandler(w http.ResponseWriter, r *http.Request) {
+func (srv *HTTPServer) rootHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/login", http.StatusMovedPermanently)
 }
 
-func loginHandler(w http.ResponseWriter, r *http.Request) {
+func (srv *HTTPServer) loginHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		desc := r.URL.Query().Get("desc")
 		renderTemplate(w, "login", desc)
 	case http.MethodPost:
-		login(w, r)
+		srv.login(w, r)
 	default:
 		log.Fatalln("Unused method" + r.Method)
 	}
 }
 
-func editHandler(w http.ResponseWriter, r *http.Request) {
+func (srv *HTTPServer) editHandler(w http.ResponseWriter, r *http.Request) {
 	if !auth.IsLoggedIn(getSid(r)) {
 		http.Redirect(w, r, "/login", http.StatusForbidden)
 		return
@@ -437,7 +466,7 @@ func editHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func registerHandler(w http.ResponseWriter, r *http.Request) {
+func (srv *HTTPServer) registerHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		desc := r.URL.Query().Get("desc")
@@ -449,7 +478,7 @@ func registerHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func homeHandler(w http.ResponseWriter, r *http.Request) {
+func (srv *HTTPServer) homeHandler(w http.ResponseWriter, r *http.Request) {
 	if !auth.IsLoggedIn(getSid(r)) {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
@@ -457,7 +486,7 @@ func homeHandler(w http.ResponseWriter, r *http.Request) {
 	//home(w, r)
 }
 
-func logoutHandler(w http.ResponseWriter, r *http.Request) {
+func (srv *HTTPServer) logoutHandler(w http.ResponseWriter, r *http.Request) {
 	if !auth.IsLoggedIn(getSid(r)) {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
@@ -477,16 +506,57 @@ func initLogger() {
 	if err != nil {
 		log.Println(err)
 	}
-	file, err := os.OpenFile("http.txt", os.O_TRUNC|os.O_CREATE|os.O_RDWR, 0666)
+	_, err = os.OpenFile("http.txt", os.O_TRUNC|os.O_CREATE|os.O_RDWR, 0666)
+	//file, err := os.OpenFile("http.txt", os.O_TRUNC|os.O_CREATE|os.O_RDWR, 0666)
 	if err != nil {
 		log.Println(err)
 	}
+	//log.SetOutput(ioutil.Discard)
 	//log.SetOutput(file)
-	log.SetOutput(io.MultiWriter(file, os.Stdout))
+	//log.SetOutput(io.MultiWriter(file, os.Stdout))
 	log.SetLevel(LOG_LEVEL)
 }
 
-func withRequestId(handler http.HandlerFunc) http.HandlerFunc {
+func initPool() pool.Pool {
+	myPool := new(pool.TcpPool).NewTcpPool(pool.TcpPoolConfig{
+		InitialSize: 1000,
+		MaxSize:     2000,
+		Factory: func() (net.Conn, error) {
+			return net.Dial("tcp", "127.0.0.1:9090")
+		},
+	})
+	return myPool
+}
+
+func initPoolSP() poolSP.Pool {
+	//factory Specify the method to create the connection
+	factory := func() (interface{}, error) { return net.Dial("tcp", "127.0.0.1:9090") }
+
+	//close Specify the method to close the connection
+	closee := func(v interface{}) error { return v.(net.Conn).Close() }
+
+	//ping Specify the method to detect whether the connection is invalid
+	ping := func(v interface{}) error { return nil }
+
+	//Create a connection pool: Initialize the number of connections to 5, the maximum idle connection is 20, and the maximum concurrent connection is 30
+	poolConfig := &poolSP.Config{
+		InitialCap: 5,
+		MaxIdle:    5,
+		MaxCap:     5,
+		Factory:    factory,
+		Close:      closee,
+		Ping:       ping,
+		//The maximum idle time of the connection, the connection exceeding this time will be closed, which can avoid the problem of automatic failure when connecting to EOF when idle
+		IdleTimeout: 60 * time.Second,
+	}
+	p, err := poolSP.NewChannelPool(poolConfig)
+	if err != nil {
+		panic(err)
+	}
+	return p
+}
+
+func (srv *HTTPServer) withRequestId(handler http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		rid := r.Header.Get(protocol.RequestIdHeader)
 		if rid == "" {
@@ -506,14 +576,14 @@ func (srv *HTTPServer) Start() {
 	log.Info("HTTP server listening on port ", srv.Port)
 
 	// have the server listen on required routes
-	http.HandleFunc("/", rootHandler)
-	http.HandleFunc("/login", withRequestId(loginHandler))
-	http.HandleFunc("/logout", logoutHandler)
-	http.HandleFunc("/home", homeHandler)
-	http.HandleFunc("/edit", editHandler)
-	http.HandleFunc("/register", registerHandler)
+	http.HandleFunc("/", srv.rootHandler)
+	http.HandleFunc("/login", srv.withRequestId(srv.loginHandler))
+	http.HandleFunc("/logout", srv.logoutHandler)
+	http.HandleFunc("/home", srv.homeHandler)
+	http.HandleFunc("/edit", srv.editHandler)
+	http.HandleFunc("/register", srv.registerHandler)
 	http.Handle("/assets/", http.StripPrefix("/assets", http.FileServer(http.Dir("./assets"))))
-	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%v", srv.Port), nil))
+	log.Fatal(http.ListenAndServe(fmt.Sprintf("%v:%v", srv.Hostname, srv.Port), nil))
 }
 
 func (srv *HTTPServer) Stop() {
@@ -521,7 +591,11 @@ func (srv *HTTPServer) Stop() {
 }
 
 func main() {
-	server := HTTPServer{Port: "8080"}
+	server := HTTPServer{
+		Hostname: "127.0.0.1",
+		Port:     "8080",
+		TcpPool:  initPool(),
+	}
 	defer server.Stop()
 	server.Start()
 }
