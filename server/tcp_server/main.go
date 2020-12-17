@@ -17,7 +17,7 @@ type TCPServer struct {
 	Port string
 }
 
-const LOG_LEVEL = log.DebugLevel
+const LOG_LEVEL = log.InfoLevel
 
 // ********************************
 // *********** COMMON *************
@@ -45,9 +45,7 @@ func handleError(rid string, conn net.Conn, err error) {
 func handleConn(conn net.Conn) {
 	// TODO: don't close the conn, persist
 	for {
-		log.Error("Receive data")
 		message, err := receiveData(conn)
-		log.Error("You should not be here")
 		if err != nil {
 			log.Info("Receive request failed", message)
 			handleError(message.Id, conn, err)
@@ -276,18 +274,19 @@ func initLogger() {
 	if err != nil {
 		log.Println(err)
 	}
-	_, err = os.OpenFile("tcp.txt", os.O_TRUNC|os.O_CREATE|os.O_RDWR, 0666)
-	//file, err := os.OpenFile("tcp.txt", os.O_TRUNC|os.O_CREATE|os.O_RDWR, 0666)
+	//_, err = os.OpenFile("tcp.txt", os.O_TRUNC|os.O_CREATE|os.O_RDWR, 0666)
+	file, err := os.OpenFile("tcp.txt", os.O_TRUNC|os.O_CREATE|os.O_RDWR, 0666)
 	if err != nil {
 		log.Println(err)
 	}
 	//log.SetOutput(ioutil.Discard)
 	//log.SetOutput(file)
-	//log.SetOutput(io.MultiWriter(file, os.Stdout))
+	log.SetOutput(io.MultiWriter(file, os.Stdout))
 	log.SetLevel(LOG_LEVEL)
 }
 
 func (srv *TCPServer) Start() {
+	//debug.SetGCPercent(-1)
 	database.Connect()
 	database.DeleteSessions()
 	initLogger()
@@ -302,6 +301,7 @@ func (srv *TCPServer) Start() {
 		if err != nil {
 			log.Panicln(err)
 		}
+
 		if c, ok := conn.(*net.TCPConn); ok {
 			c.SetKeepAlive(true)
 			c.SetKeepAlivePeriod(time.Second * 60)

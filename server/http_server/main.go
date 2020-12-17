@@ -26,9 +26,9 @@ import (
 )
 
 const (
-	TIMEOUT     = time.Second * 7
+	TIMEOUT     = time.Second * 60
 	IMG_MAXSIZE = 1 << 12 // 2^12
-	LOG_LEVEL   = log.DebugLevel
+	LOG_LEVEL   = log.InfoLevel
 )
 
 type HTTPServer struct {
@@ -169,8 +169,8 @@ func (srv *HTTPServer) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// TODO: should put back to pool instead
-	//defer srv.TcpPool.Put(conn)
 	defer srv.TcpPool.Put(conn)
+	//defer conn.Close()
 	err = sendReq(conn, req)
 	if err != nil {
 		log.Debug("In request")
@@ -180,7 +180,6 @@ func (srv *HTTPServer) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	res, err := receiveRes(conn)
-	log.Info("Receive login response", res)
 	if err != nil {
 		log.Info("In response")
 		srv.handleError(req.Id, conn, err)
@@ -188,6 +187,7 @@ func (srv *HTTPServer) login(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/login"+qs, http.StatusSeeOther)
 		return
 	}
+	log.Info("Receive login response", res)
 	processLoginRes(w, r, res)
 	log.WithField(protocol.RequestId, req.Id).Info("Connection closed")
 }
@@ -506,21 +506,21 @@ func initLogger() {
 	if err != nil {
 		log.Println(err)
 	}
-	_, err = os.OpenFile("http.txt", os.O_TRUNC|os.O_CREATE|os.O_RDWR, 0666)
-	//file, err := os.OpenFile("http.txt", os.O_TRUNC|os.O_CREATE|os.O_RDWR, 0666)
+	//_, err = os.OpenFile("http.txt", os.O_TRUNC|os.O_CREATE|os.O_RDWR, 0666)
+	file, err := os.OpenFile("http.txt", os.O_TRUNC|os.O_CREATE|os.O_RDWR, 0666)
 	if err != nil {
 		log.Println(err)
 	}
 	//log.SetOutput(ioutil.Discard)
-	//log.SetOutput(file)
+	log.SetOutput(file)
 	//log.SetOutput(io.MultiWriter(file, os.Stdout))
 	log.SetLevel(LOG_LEVEL)
 }
 
 func initPool() pool.Pool {
 	myPool := new(pool.TcpPool).NewTcpPool(pool.TcpPoolConfig{
-		InitialSize: 1000,
-		MaxSize:     2000,
+		InitialSize: 500,
+		MaxSize:     700,
 		Factory: func() (net.Conn, error) {
 			return net.Dial("tcp", "127.0.0.1:9090")
 		},
@@ -587,6 +587,7 @@ func (srv *HTTPServer) Start() {
 }
 
 func (srv *HTTPServer) Stop() {
+	srv.TcpPool.Stats()
 	log.Info("HTTP server stopped.")
 }
 

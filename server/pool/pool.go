@@ -1,6 +1,7 @@
 package pool
 
 import (
+	"fmt"
 	"log"
 	"net"
 )
@@ -9,11 +10,15 @@ type Pool interface {
 	Get() (net.Conn, error)
 	Put(net.Conn)
 	Destroy(net.Conn) error
+	Stats()
 }
 
 type TcpPool struct {
 	config      TcpPoolConfig
 	connections chan net.Conn
+	total       uint
+	alloced     uint
+	reused      uint
 }
 
 type TcpPoolConfig struct {
@@ -36,12 +41,15 @@ func (pool *TcpPool) NewTcpPool(config TcpPoolConfig) Pool {
 }
 
 func (pool *TcpPool) Get() (net.Conn, error) {
+	pool.total++
 	select {
 	case conn := <-pool.connections:
 		// return a pool connection if possible
+		pool.reused++
 		return conn, nil
 	default:
 		// dial a new conn if not enough in pool
+		pool.alloced++
 		conn, err := pool.config.Factory()
 		return conn, err
 	}
@@ -64,4 +72,8 @@ func (pool *TcpPool) Put(conn net.Conn) {
 func (pool *TcpPool) Destroy(conn net.Conn) error {
 	err := conn.Close()
 	return err
+}
+
+func (pool *TcpPool) Stats() {
+	fmt.Printf("Total: %v, Allocated: %v, Reused: %v\n", pool.total, pool.alloced, pool.reused)
 }
