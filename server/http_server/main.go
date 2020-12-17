@@ -89,7 +89,7 @@ func (srv *HTTPServer) getTcpConnPooled() (net.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	return conn, err
+	return conn, nil
 }
 
 func (srv *HTTPServer) getTcpConn() (net.Conn, error) {
