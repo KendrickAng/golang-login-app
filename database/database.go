@@ -48,7 +48,7 @@ func rowsToSessions(rows *sql.Rows) []protocol.Session {
 
 func UpdateUser(key string, nickname string, picPath string) int64 {
 	ensureConnected(db)
-	result, err := db.Exec("UPDATE users SET nickname=?, profile_pic=? WHERE username=?", nickname, picPath, key)
+	result, err := db.Exec("UPDATE users_test SET nickname=?, profile_pic=? WHERE username=?", nickname, picPath, key)
 	if err != nil {
 		log.Panicln(err)
 	}
@@ -60,7 +60,7 @@ func UpdateUser(key string, nickname string, picPath string) int64 {
 
 func InsertUser(username string, pwHash string, nickname string) int64 {
 	ensureConnected(db)
-	result, err := db.Exec("INSERT INTO users VALUES (?, ?, ?, ?)", username, nickname, pwHash, sql.NullString{})
+	result, err := db.Exec("INSERT INTO users_test VALUES (?, ?, ?, ?)", username, nickname, pwHash, sql.NullString{})
 	if err != nil {
 		// duplicate username pkey
 		if me, ok := err.(*mysql.MySQLError); ok && me.Number == DUP_PKEY {
@@ -76,7 +76,7 @@ func InsertUser(username string, pwHash string, nickname string) int64 {
 // Retrieves a user based on key (his unique username)
 func GetUser(key string) []protocol.User {
 	ensureConnected(db)
-	res, err := db.Query("SELECT username, nickname, pw_hash, COALESCE(profile_pic, '') FROM users WHERE username = ?", key)
+	res, err := db.Query("SELECT username, nickname, pw_hash, COALESCE(profile_pic, '') FROM users_test WHERE username = ?", key)
 	if err != nil {
 		log.Panicln(err)
 	}

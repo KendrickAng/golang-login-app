@@ -1,21 +1,21 @@
 package pool
 
 import (
+	"encoding/gob"
 	"fmt"
-	"log"
 	"net"
 )
 
 type Pool interface {
-	Get() (net.Conn, error)
-	Put(net.Conn)
-	Destroy(net.Conn) error
+	Get() (TcpConn, error)
+	Put(*TcpConn)
+	Destroy(*TcpConn) error
 	Stats()
 }
 
 type TcpPool struct {
 	config      TcpPoolConfig
-	connections chan net.Conn
+	connections chan TcpConn
 	total       uint
 	alloced     uint
 	reused      uint
@@ -27,20 +27,38 @@ type TcpPoolConfig struct {
 	Factory     func() (net.Conn, error)
 }
 
+type TcpConn struct {
+	Enc  *gob.Encoder
+	Dec  *gob.Decoder
+	Conn net.Conn
+}
+
+func newTcpConn(f func() (net.Conn, error)) (TcpConn, error) {
+	conn, err := f()
+	if err != nil {
+		return TcpConn{}, err
+	}
+	return TcpConn{
+		Enc:  gob.NewEncoder(conn),
+		Dec:  gob.NewDecoder(conn),
+		Conn: conn,
+	}, nil
+}
+
 func (pool *TcpPool) NewTcpPool(config TcpPoolConfig) Pool {
-	pool.connections = make(chan net.Conn, config.MaxSize)
+	pool.connections = make(chan TcpConn, config.MaxSize)
 	pool.config = config
 	for i := 0; i < pool.config.InitialSize; i++ {
-		conn, err := pool.config.Factory()
+		tcpConn, err := newTcpConn(pool.config.Factory)
 		if err != nil {
-			log.Panicln(err)
+			panic(err)
 		}
-		pool.connections <- conn
+		pool.connections <- tcpConn
 	}
 	return pool
 }
 
-func (pool *TcpPool) Get() (net.Conn, error) {
+func (pool *TcpPool) Get() (TcpConn, error) {
 	pool.total++
 	select {
 	case conn := <-pool.connections:
@@ -50,30 +68,35 @@ func (pool *TcpPool) Get() (net.Conn, error) {
 	default:
 		// dial a new conn if not enough in pool
 		pool.alloced++
-		conn, err := pool.config.Factory()
-		return conn, err
+		tcpConn, err := newTcpConn(pool.config.Factory)
+		return tcpConn, err
 	}
 }
 
-func (pool *TcpPool) Put(conn net.Conn) {
-	if conn == nil {
+func (pool *TcpPool) Put(tcpConn *TcpConn) {
+	if tcpConn == nil {
 		return
 	}
 	select {
-	case pool.connections <- conn:
+	case pool.connections <- *tcpConn:
 		return
 	default:
 		// if the pool is full, throw the connection away
-		conn.Close()
+		tcpConn.close()
 	}
 }
 
 // Close the connection, don't put it back to pool
-func (pool *TcpPool) Destroy(conn net.Conn) error {
-	err := conn.Close()
+func (pool *TcpPool) Destroy(conn *TcpConn) error {
+	err := conn.close()
 	return err
 }
 
 func (pool *TcpPool) Stats() {
 	fmt.Printf("Total: %v, Allocated: %v, Reused: %v\n", pool.total, pool.alloced, pool.reused)
+}
+
+func (conn *TcpConn) close() error {
+	err := conn.Conn.Close()
+	return err
 }

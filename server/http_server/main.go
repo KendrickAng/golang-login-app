@@ -1,14 +1,13 @@
 package main
 
 import (
-	"encoding/gob"
 	"errors"
-	"example.com/kendrick/auth"
 	"example.com/kendrick/common"
 	"example.com/kendrick/fileio"
 	"example.com/kendrick/protocol"
 	"example.com/kendrick/security"
 	"example.com/kendrick/server/pool"
+	"example.com/kendrick/server/tcp_server/auth"
 	"fmt"
 	"github.com/satori/uuid"
 	poolSP "github.com/silenceper/pool"
@@ -26,12 +25,12 @@ import (
 )
 
 const (
-	TIMEOUT     = time.Second * 60
 	IMG_MAXSIZE = 1 << 12 // 2^12
-	LOG_LEVEL   = log.InfoLevel
+	LOG_LEVEL   = log.ErrorLevel
 )
 
 type HTTPServer struct {
+	Server   http.Server
 	TcpPool  pool.Pool
 	Hostname string
 	Port     string
@@ -43,6 +42,10 @@ var logger *log.Logger
 // ********************************
 // *********** COMMON *************
 // ********************************
+func isLoggedIn(sid string) bool {
+	return sid != ""
+}
+
 // Gets the value of the session cookie. Returns "" if not present.
 func getSid(req *http.Request) string {
 	cookie, err := req.Cookie(auth.SESS_COOKIE_NAME)
@@ -60,7 +63,7 @@ func renderTemplate(w http.ResponseWriter, tmpl string, data interface{}) {
 	}
 }
 
-func (srv *HTTPServer) handleError(rid string, conn net.Conn, err error) {
+func (srv *HTTPServer) handleError(rid string, conn *pool.TcpConn, err error) {
 	if err != nil {
 		logger := log.WithFields(log.Fields{protocol.RequestId: rid})
 		if err == io.EOF {
@@ -84,10 +87,10 @@ func (srv *HTTPServer) handleError(rid string, conn net.Conn, err error) {
 	}
 }
 
-func (srv *HTTPServer) getTcpConnPooled() (net.Conn, error) {
+func (srv *HTTPServer) getTcpConnPooled() (pool.TcpConn, error) {
 	conn, err := srv.TcpPool.Get()
 	if err != nil {
-		return nil, err
+		return pool.TcpConn{}, err
 	}
 	return conn, nil
 }
@@ -100,61 +103,12 @@ func (srv *HTTPServer) getTcpConn() (net.Conn, error) {
 	return conn, err
 }
 
-func sendReq(conn net.Conn, data protocol.Request) error {
-	//conn, err := net.Dial("tcp", "localhost:8081")
-	//if err != nil {
-	//	log.Fatalln(err)
-	//}
-	log.Debug("Sending request", data)
-	err := gob.NewEncoder(conn).Encode(&data)
-	if err != nil {
-		return err
-	}
-	log.Debug("Request sent", data)
-	return nil
-}
-
-func receiveRes(conn net.Conn) (protocol.Response, error) {
-	log.Debug("Receiving response")
-	err := conn.SetReadDeadline(time.Now().Add(TIMEOUT))
-	if err != nil {
-		return protocol.Response{}, err
-	}
-	var res protocol.Response
-	err = gob.NewDecoder(conn).Decode(&res)
-	if err != nil {
-		return protocol.Response{}, err
-	}
-	err = conn.SetReadDeadline(time.Time{})
-	if err != nil {
-		return protocol.Response{}, err
-	}
-	log.Debug("Received response", res)
-	//if err == io.EOF {
-	//	common.Print("EOF WHEN READING RESPONSE", nil)
-	//	return protocol.Response{
-	//		Code:        protocol.TCP_CONNECTION_CLOSED,
-	//		Description: "TCP Server closed connection, EOF when reading response",
-	//		Data:        nil,
-	//	}
-	//} else if errors.Is(err, os.ErrDeadlineExceeded) {
-	//	return protocol.Response{
-	//		Code:        protocol.TCP_SERVER_TIMEOUT,
-	//		Description: "TCP Server timeout after " + strconv.FormatInt(int64(TIMEOUT), 10) + " seconds",
-	//		Data:        nil,
-	//	}
-	//} else {
-	//	handleError(err)
-	//}
-	return res, nil
-}
-
 // *******************************
 // *********** LOGIN *************
 // *******************************
 // Main handler called when logging in
 func (srv *HTTPServer) login(w http.ResponseWriter, r *http.Request) {
-	if auth.IsLoggedIn(getSid(r)) {
+	if isLoggedIn(getSid(r)) {
 		http.Redirect(w, r, "/home", http.StatusSeeOther)
 		return
 	}
@@ -163,33 +117,46 @@ func (srv *HTTPServer) login(w http.ResponseWriter, r *http.Request) {
 	conn, err := srv.getTcpConnPooled()
 	if err != nil {
 		log.Debug("In getTcpConn")
-		srv.handleError(req.Id, conn, err)
+		srv.handleError(req.Id, &conn, err)
 		qs := common.CreateQueryString("Login failed, please try again in a while")
 		http.Redirect(w, r, "/login"+qs, http.StatusSeeOther)
 		return
 	}
-	// TODO: should put back to pool instead
-	defer srv.TcpPool.Put(conn)
+	defer srv.TcpPool.Put(&conn)
 	//defer conn.Close()
-	err = sendReq(conn, req)
+	//err = sendReq(conn, req)
+
+	// SEND REQUEST
+	log.Debug("Sending request", req)
+	err = conn.Enc.Encode(req)
 	if err != nil {
 		log.Debug("In request")
-		srv.handleError(req.Id, conn, err)
+		srv.handleError(req.Id, &conn, err)
 		qs := common.CreateQueryString("Login failed, please try again in a while")
 		http.Redirect(w, r, "/login"+qs, http.StatusSeeOther)
 		return
 	}
-	res, err := receiveRes(conn)
-	if err != nil {
-		log.Info("In response")
-		srv.handleError(req.Id, conn, err)
-		qs := common.CreateQueryString("Login failed, please try again in a while")
-		http.Redirect(w, r, "/login"+qs, http.StatusSeeOther)
-		return
-	}
-	log.Info("Receive login response", res)
-	processLoginRes(w, r, res)
-	log.WithField(protocol.RequestId, req.Id).Info("Connection closed")
+	log.Debug("Request sent", req)
+
+	// RECEIVE RESPONSE
+	//res, err := receiveRes(conn)
+	//log.Debug("Receiving response")
+	var res protocol.Response
+	// TODO: FOUND THE SLOWDOWN AREA!
+	err = conn.Dec.Decode(&res)
+	//log.Debug("Received response", res)
+	//if err != nil {
+	//	log.Info("In response")
+	//	srv.handleError(req.Id, &conn, err)
+	//	qs := common.CreateQueryString("Login failed, please try again in a while")
+	//	http.Redirect(w, r, "/login"+qs, http.StatusSeeOther)
+	//	return
+	//}
+	//log.Info("Receive login response", res)
+	//
+	//// PROCESS RESPONSE
+	//processLoginRes(w, r, res)
+	//log.WithField(protocol.RequestId, req.Id).Info("Connection closed")
 }
 
 func createLoginReq(r *http.Request) protocol.Request {
@@ -214,9 +181,13 @@ func createLoginReq(r *http.Request) protocol.Request {
 }
 
 func processLoginRes(w http.ResponseWriter, r *http.Request, res protocol.Response) {
-	logger := log.WithField(protocol.RequestId, res.Id)
+	logger := log.WithFields(log.Fields{
+		protocol.RequestId: res.Id,
+		protocol.ResCode:   res.Code,
+		protocol.ResDesc:   res.Description,
+	})
 	logger.Debug("Processing login response")
-	if res.Code != protocol.CREDENTIALS_INVALID {
+	if res.Code == protocol.CREDENTIALS_INVALID {
 		qs := common.CreateQueryString("No such account, please register first!")
 		http.Redirect(w, r, "/register"+qs, http.StatusSeeOther)
 		return
@@ -451,7 +422,7 @@ func (srv *HTTPServer) loginHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (srv *HTTPServer) editHandler(w http.ResponseWriter, r *http.Request) {
-	if !auth.IsLoggedIn(getSid(r)) {
+	if !isLoggedIn(getSid(r)) {
 		http.Redirect(w, r, "/login", http.StatusForbidden)
 		return
 	}
@@ -479,7 +450,7 @@ func (srv *HTTPServer) registerHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (srv *HTTPServer) homeHandler(w http.ResponseWriter, r *http.Request) {
-	if !auth.IsLoggedIn(getSid(r)) {
+	if !isLoggedIn(getSid(r)) {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
@@ -487,7 +458,7 @@ func (srv *HTTPServer) homeHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (srv *HTTPServer) logoutHandler(w http.ResponseWriter, r *http.Request) {
-	if !auth.IsLoggedIn(getSid(r)) {
+	if !isLoggedIn(getSid(r)) {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
@@ -504,23 +475,24 @@ func initLogger() {
 	log.SetFormatter(customFormatter)
 	err := os.Remove("http.txt")
 	if err != nil {
-		log.Println(err)
+		log.Error(err)
 	}
+
 	//_, err = os.OpenFile("http.txt", os.O_TRUNC|os.O_CREATE|os.O_RDWR, 0666)
-	file, err := os.OpenFile("http.txt", os.O_TRUNC|os.O_CREATE|os.O_RDWR, 0666)
+	//file, err := os.OpenFile("http.txt", os.O_TRUNC|os.O_CREATE|os.O_RDWR, 0666)
 	if err != nil {
-		log.Println(err)
+		log.Error(err)
 	}
 	//log.SetOutput(ioutil.Discard)
-	log.SetOutput(file)
+	//log.SetOutput(file)
 	//log.SetOutput(io.MultiWriter(file, os.Stdout))
 	log.SetLevel(LOG_LEVEL)
 }
 
 func initPool() pool.Pool {
 	myPool := new(pool.TcpPool).NewTcpPool(pool.TcpPoolConfig{
-		InitialSize: 500,
-		MaxSize:     700,
+		InitialSize: 1000,
+		MaxSize:     1200,
 		Factory: func() (net.Conn, error) {
 			return net.Dial("tcp", "127.0.0.1:9090")
 		},
@@ -583,7 +555,15 @@ func (srv *HTTPServer) Start() {
 	http.HandleFunc("/edit", srv.editHandler)
 	http.HandleFunc("/register", srv.registerHandler)
 	http.Handle("/assets/", http.StripPrefix("/assets", http.FileServer(http.Dir("./assets"))))
-	log.Fatal(http.ListenAndServe(fmt.Sprintf("%v:%v", srv.Hostname, srv.Port), nil))
+	server := &http.Server{
+		Addr:         ":" + srv.Port,
+		Handler:      http.DefaultServeMux,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 60 * time.Second,
+		IdleTimeout:  120 * time.Second,
+	}
+	log.Fatal(server.ListenAndServe())
+	//log.Fatal(http.ListenAndServe(fmt.Sprintf("%v:%v", srv.Hostname, srv.Port), http.DefaultServeMux))
 }
 
 func (srv *HTTPServer) Stop() {
@@ -597,6 +577,7 @@ func main() {
 		Port:     "8080",
 		TcpPool:  initPool(),
 	}
+
 	defer server.Stop()
 	server.Start()
 }

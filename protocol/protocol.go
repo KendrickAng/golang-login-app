@@ -9,6 +9,8 @@ const (
 	SessionId       = "sid"
 	RequestId       = "rid"
 	RequestIdHeader = "X-Request-ID"
+	ResCode         = "resCode"
+	ResDesc         = "ResDesc"
 )
 
 type User struct {

@@ -10,29 +10,25 @@ const (
 	SESS_COOKIE_NAME = "session"
 )
 
+var validPwCache = make(map[string]bool, 250)
+
 /*
 This package handles authentication, session creation/deletion, cookie creation/deletion, uuid creation.
 It also queries the SQL database, if needed.
 */
-func IsLoggedIn(uuid string) bool {
-	return uuid != ""
-}
-
-// Returns true if the username exists in the SQL DB.
-func isValidUser(username string) bool {
-	if len(username) == 0 {
-		return false
-	}
-	users := database.GetUser(username)
-	return len(users) == 1
-}
-
 func IsValidPassword(username string, pw string) bool {
 	users := database.GetUser(username)
 	if len(users) != 1 {
 		return false
 	}
-	return security.ComparePwHash(pw, users[0].PwHash)
+	// try to get from cache first
+	if isValid, ok := validPwCache[username]; ok {
+		return isValid
+	} else {
+		isPwValid := security.ComparePwHash(pw, users[0].PwHash)
+		validPwCache[username] = isPwValid
+		return isPwValid
+	}
 }
 
 // generates a new uuid for a username, then returns the uuid.

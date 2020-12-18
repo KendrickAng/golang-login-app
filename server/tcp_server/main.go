@@ -2,14 +2,18 @@ package main
 
 import (
 	"encoding/gob"
-	"example.com/kendrick/auth"
 	database "example.com/kendrick/database"
 	"example.com/kendrick/protocol"
+	"example.com/kendrick/server/tcp_server/auth"
+	"flag"
 	"fmt"
 	log "github.com/sirupsen/logrus"
 	"io"
 	"net"
 	"os"
+	"os/signal"
+	"runtime/pprof"
+	"syscall"
 	"time"
 )
 
@@ -17,7 +21,9 @@ type TCPServer struct {
 	Port string
 }
 
-const LOG_LEVEL = log.InfoLevel
+var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
+
+const LOG_LEVEL = log.ErrorLevel
 
 // ********************************
 // *********** COMMON *************
@@ -43,29 +49,36 @@ func handleError(rid string, conn net.Conn, err error) {
 }
 
 func handleConn(conn net.Conn) {
-	// TODO: don't close the conn, persist
-	for {
-		message, err := receiveData(conn)
+	defer conn.Close()
+	decoder := gob.NewDecoder(conn)
+	encoder := gob.NewEncoder(conn)
+	var err error
+	for err != io.EOF {
+		msgs := protocol.Request{}
+		err = decoder.Decode(&msgs)
 		if err != nil {
-			log.Info("Receive request failed", message)
-			handleError(message.Id, conn, err)
+			if err != io.EOF {
+				log.Error(err) // e.g extra data in buffer
+			}
+			continue
+		}
+		//msgs := receiveData(decoder)
+		log.Info("Receive request success", msgs)
+		response := handleData(&msgs)
+		log.Info("Sending response", msgs)
+		err = encoder.Encode(response)
+		//err := sendResponse(response, encoder)
+		if err != nil {
+			log.Error("Send response failed", msgs)
+			handleError(msgs.Id, conn, err)
 			return
 		}
-		log.Info("Receive request success", message)
-		response := handleData(message)
-		log.Info("Sending response", message)
-		err = sendResponse(response, conn)
-		if err != nil {
-			log.Info("Send response failed", message)
-			handleError(message.Id, conn, err)
-			return
-		}
-		log.Info("Send response success", message)
+		log.Info("Send response success", msgs)
 	}
 }
 
 // Invokes the relevant request handler
-func handleData(req protocol.Request) protocol.Response {
+func handleData(req *protocol.Request) protocol.Response {
 	switch req.Type {
 	case "LOGIN":
 		// profiling.RecordLogin("LOGIN\n")
@@ -84,20 +97,28 @@ func handleData(req protocol.Request) protocol.Response {
 	return protocol.Response{}
 }
 
-func receiveData(conn net.Conn) (protocol.Request, error) {
+func receiveData(dec *gob.Decoder) []*protocol.Request {
 	log.Debug("Receiving request")
-	var m protocol.Request
-	err := gob.NewDecoder(conn).Decode(&m)
-	if err != nil {
-		return protocol.Request{}, err
+	var reqs []*protocol.Request
+	var err error
+	for err != io.EOF {
+		rec := protocol.Request{}
+		err = dec.Decode(&rec)
+		if err != nil {
+			log.Debug(err)
+			continue
+		}
+		reqs = append(reqs, &rec)
+		log.Debug(reqs)
 	}
-	log.Debug("Received request", m)
-	return m, nil
+
+	log.Debug("Received requests", reqs)
+	return reqs
 }
 
-func sendResponse(data protocol.Response, conn net.Conn) error {
+func sendResponse(data protocol.Response, enc *gob.Encoder) error {
 	log.Debug("Sending response", data)
-	err := gob.NewEncoder(conn).Encode(data)
+	err := enc.Encode(data)
 	if err != nil {
 		return err
 	}
@@ -106,7 +127,7 @@ func sendResponse(data protocol.Response, conn net.Conn) error {
 }
 
 // Checks the validity of username and password hash in login request.
-func handleLoginReq(req protocol.Request) protocol.Response {
+func handleLoginReq(req *protocol.Request) protocol.Response {
 	data := req.Data
 	username := data[protocol.Username]
 	pw := data[protocol.PwPlain]
@@ -117,21 +138,21 @@ func handleLoginReq(req protocol.Request) protocol.Response {
 
 	if auth.IsValidPassword(username, pw) {
 		sid := auth.CreateSession(username)
-		data := make(map[string]string)
-		data[protocol.Username] = username
-		data[protocol.SessionId] = sid
+		ret := make(map[string]string)
+		ret[protocol.Username] = username
+		ret[protocol.SessionId] = sid
 		res := protocol.Response{
 			Id:          req.Id,
-			Code:        protocol.CREDENTIALS_INVALID,
+			Code:        protocol.CREDENTIALS_VALID,
 			Description: "Login for " + username + " succeeded",
-			Data:        data,
+			Data:        ret,
 		}
 		log.Debug("Valid password")
 		return res
 	}
 	res := protocol.Response{
 		Id:          req.Id,
-		Code:        protocol.CREDENTIALS_VALID,
+		Code:        protocol.CREDENTIALS_INVALID,
 		Description: "Login for " + username + " failed",
 		Data:        nil,
 	}
@@ -139,7 +160,7 @@ func handleLoginReq(req protocol.Request) protocol.Response {
 	return res
 }
 
-func handleEditReq(req protocol.Request) protocol.Response {
+func handleEditReq(req *protocol.Request) protocol.Response {
 	data := req.Data
 	sid := data[protocol.SessionId]
 	nickname := data[protocol.Nickname]
@@ -175,7 +196,7 @@ func handleEditReq(req protocol.Request) protocol.Response {
 	return res
 }
 
-func handleLogoutReq(req protocol.Request) protocol.Response {
+func handleLogoutReq(req *protocol.Request) protocol.Response {
 	data := req.Data
 	sid := data[protocol.SessionId]
 	log.WithFields(log.Fields{
@@ -194,7 +215,7 @@ func handleLogoutReq(req protocol.Request) protocol.Response {
 	return res
 }
 
-func handleRegReq(req protocol.Request) protocol.Response {
+func handleRegReq(req *protocol.Request) protocol.Response {
 	data := req.Data
 	nickname := data[protocol.Nickname]
 	username := data[protocol.Username]
@@ -227,7 +248,7 @@ func handleRegReq(req protocol.Request) protocol.Response {
 	return res
 }
 
-func handleHomeReq(req protocol.Request) protocol.Response {
+func handleHomeReq(req *protocol.Request) protocol.Response {
 	data := req.Data
 	sid := data[protocol.SessionId]
 	log.WithFields(log.Fields{
@@ -272,16 +293,16 @@ func initLogger() {
 	log.SetFormatter(customFormatter)
 	err := os.Remove("tcp.txt")
 	if err != nil {
-		log.Println(err)
+		log.Error(err)
 	}
 	//_, err = os.OpenFile("tcp.txt", os.O_TRUNC|os.O_CREATE|os.O_RDWR, 0666)
-	file, err := os.OpenFile("tcp.txt", os.O_TRUNC|os.O_CREATE|os.O_RDWR, 0666)
+	//file, err := os.OpenFile("tcp.txt", os.O_TRUNC|os.O_CREATE|os.O_RDWR, 0666)
 	if err != nil {
-		log.Println(err)
+		log.Error(err)
 	}
 	//log.SetOutput(ioutil.Discard)
 	//log.SetOutput(file)
-	log.SetOutput(io.MultiWriter(file, os.Stdout))
+	//log.SetOutput(io.MultiWriter(file, os.Stdout))
 	log.SetLevel(LOG_LEVEL)
 }
 
@@ -316,7 +337,25 @@ func (srv *TCPServer) Stop() {
 }
 
 func main() {
+	// allow server to release resources when done
+	done := make(chan os.Signal, 1)
+	signal.Notify(done, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+
+	// cpu profiling
+	flag.Parse()
+	if *cpuprofile != "" {
+		f, err := os.Create(*cpuprofile)
+		if err != nil {
+			log.Fatal(err)
+		}
+		pprof.StartCPUProfile(f)
+		defer pprof.StopCPUProfile()
+	}
+
 	server := TCPServer{Port: "9090"}
 	defer server.Stop()
-	server.Start()
+	go server.Start()
+
+	<-done
+	fmt.Println("SERVER STOPPED")
 }
