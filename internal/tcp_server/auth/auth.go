@@ -1,8 +1,8 @@
 package auth
 
 import (
-	"example.com/kendrick/database"
-	"example.com/kendrick/security"
+	"example.com/kendrick/internal/tcp_server/database"
+	"example.com/kendrick/internal/tcp_server/security"
 	"github.com/satori/uuid"
 )
 

@@ -2,9 +2,8 @@ package database
 
 import (
 	"database/sql"
-	"example.com/kendrick/common"
-	"example.com/kendrick/fileio"
-	"example.com/kendrick/protocol"
+	"example.com/kendrick/api"
+	"example.com/kendrick/internal/utils"
 	"github.com/go-sql-driver/mysql"
 	_ "github.com/go-sql-driver/mysql"
 	"log"
@@ -20,10 +19,10 @@ const (
 )
 
 // Converts sql return statement to slice of User
-func rowsToUsers(rows *sql.Rows) []protocol.User {
-	var ret []protocol.User
+func rowsToUsers(rows *sql.Rows) []api.User {
+	var ret []api.User
 	for rows.Next() {
-		var user protocol.User
+		var user api.User
 		err := rows.Scan(&user.Nickname, &user.Username, &user.PwHash, &user.ProfilePic)
 		if err != nil {
 			log.Panicln(err)
@@ -33,10 +32,10 @@ func rowsToUsers(rows *sql.Rows) []protocol.User {
 	return ret
 }
 
-func rowsToSessions(rows *sql.Rows) []protocol.Session {
-	var ret []protocol.Session
+func rowsToSessions(rows *sql.Rows) []api.Session {
+	var ret []api.Session
 	for rows.Next() {
-		var sess protocol.Session
+		var sess api.Session
 		err := rows.Scan(&sess.Uuid, &sess.Username)
 		if err != nil {
 			log.Panicln(err)
@@ -74,7 +73,7 @@ func InsertUser(username string, pwHash string, nickname string) int64 {
 }
 
 // Retrieves a user based on key (his unique username)
-func GetUser(key string) []protocol.User {
+func GetUser(key string) []api.User {
 	ensureConnected(db)
 	res, err := db.Query("SELECT username, nickname, pw_hash, COALESCE(profile_pic, '') FROM users_test WHERE username = ?", key)
 	if err != nil {
@@ -91,7 +90,7 @@ func GetUser(key string) []protocol.User {
 func InsertSession(uuid string, username string) int64 {
 	ensureConnected(db)
 	result, err := db.Exec("INSERT INTO sessions VALUES (?, ?)", uuid, username)
-	if common.IsError(err) {
+	if utils.IsError(err) {
 		return 0
 	}
 	//log.Println("INSERT SESSION: uuid: " + uuid + " | username: " + username)
@@ -113,7 +112,7 @@ func DeleteSession(uuid string) int64 {
 	return rows
 }
 
-func GetSession(uuid string) []protocol.Session {
+func GetSession(uuid string) []api.Session {
 	ensureConnected(db)
 	rows, err := db.Query("SELECT uuid, username FROM sessions WHERE uuid=?", uuid)
 	if err != nil {
@@ -142,7 +141,7 @@ func Connect() {
 	var err error
 	// read password
 	if pw == "" {
-		pw = fileio.ReadPw()
+		pw = utils.ReadPw()
 	}
 	// Connect to the database
 	db, err = sql.Open("mysql", "root:"+pw+"@tcp(localhost:3306)/users_db")

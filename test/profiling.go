@@ -1,7 +1,7 @@
-package profiling
+package test
 
 import (
-	"example.com/kendrick/fileio"
+	"example.com/kendrick/internal/utils"
 	"log"
 	"os"
 	"path"
@@ -9,7 +9,7 @@ import (
 
 const IS_PROFILING = true
 
-var LOGIN_LOGFILE string = path.Join(fileio.RootDir(), "loginsLog.txt")
+var LOGIN_LOGFILE string = path.Join(utils.RootDir(), "loginsLog.txt")
 
 // clears all log files
 func InitLogFiles() {

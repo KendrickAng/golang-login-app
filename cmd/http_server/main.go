@@ -2,12 +2,11 @@ package main
 
 import (
 	"errors"
-	"example.com/kendrick/common"
-	"example.com/kendrick/fileio"
-	"example.com/kendrick/protocol"
-	"example.com/kendrick/security"
-	"example.com/kendrick/server/pool"
-	"example.com/kendrick/server/tcp_server/auth"
+	"example.com/kendrick/api"
+	"example.com/kendrick/internal/http_server/pool"
+	"example.com/kendrick/internal/tcp_server/auth"
+	"example.com/kendrick/internal/tcp_server/security"
+	"example.com/kendrick/internal/utils"
 	"fmt"
 	"github.com/satori/uuid"
 	poolSP "github.com/silenceper/pool"
@@ -65,7 +64,7 @@ func renderTemplate(w http.ResponseWriter, tmpl string, data interface{}) {
 
 func (srv *HTTPServer) handleError(rid string, conn *pool.TcpConn, err error) {
 	if err != nil {
-		logger := log.WithFields(log.Fields{protocol.RequestId: rid})
+		logger := log.WithFields(log.Fields{api.RequestId: rid})
 		if err == io.EOF {
 			// connection closed by TCP server - tell the pool to destroy connection
 			logger.Error(err)
@@ -118,7 +117,7 @@ func (srv *HTTPServer) login(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Debug("In getTcpConn")
 		srv.handleError(req.Id, &conn, err)
-		qs := common.CreateQueryString("Login failed, please try again in a while")
+		qs := utils.CreateQueryString("Login failed, please try again in a while")
 		http.Redirect(w, r, "/login"+qs, http.StatusSeeOther)
 		return
 	}
@@ -132,7 +131,7 @@ func (srv *HTTPServer) login(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Debug("In request")
 		srv.handleError(req.Id, &conn, err)
-		qs := common.CreateQueryString("Login failed, please try again in a while")
+		qs := utils.CreateQueryString("Login failed, please try again in a while")
 		http.Redirect(w, r, "/login"+qs, http.StatusSeeOther)
 		return
 	}
@@ -141,7 +140,7 @@ func (srv *HTTPServer) login(w http.ResponseWriter, r *http.Request) {
 	// RECEIVE RESPONSE
 	//res, err := receiveRes(conn)
 	//log.Debug("Receiving response")
-	var res protocol.Response
+	var res api.Response
 	// TODO: FOUND THE SLOWDOWN AREA!
 	err = conn.Dec.Decode(&res)
 	//log.Debug("Received response", res)
@@ -159,40 +158,40 @@ func (srv *HTTPServer) login(w http.ResponseWriter, r *http.Request) {
 	//log.WithField(protocol.RequestId, req.Id).Info("Connection closed")
 }
 
-func createLoginReq(r *http.Request) protocol.Request {
+func createLoginReq(r *http.Request) api.Request {
 	log.Debug("Creating login request")
 	username := r.FormValue("username")
 	password := r.FormValue("password")
-	rid := r.Header.Get(protocol.RequestIdHeader)
+	rid := r.Header.Get(api.RequestIdHeader)
 	ret := make(map[string]string)
-	ret[protocol.Username] = username
-	ret[protocol.PwPlain] = password
-	req := protocol.Request{
+	ret[api.Username] = username
+	ret[api.PwPlain] = password
+	req := api.Request{
 		Id:   rid,
 		Type: "LOGIN",
 		Data: ret,
 	}
 	log.WithFields(log.Fields{
-		protocol.RequestId: rid,
-		protocol.Username:  username,
-		protocol.PwPlain:   password,
+		api.RequestId: rid,
+		api.Username:  username,
+		api.PwPlain:   password,
 	}).Debug("Created login request")
 	return req
 }
 
-func processLoginRes(w http.ResponseWriter, r *http.Request, res protocol.Response) {
+func processLoginRes(w http.ResponseWriter, r *http.Request, res api.Response) {
 	logger := log.WithFields(log.Fields{
-		protocol.RequestId: res.Id,
-		protocol.ResCode:   res.Code,
-		protocol.ResDesc:   res.Description,
+		api.RequestId: res.Id,
+		api.ResCode:   res.Code,
+		api.ResDesc:   res.Description,
 	})
 	logger.Debug("Processing login response")
-	if res.Code == protocol.CREDENTIALS_INVALID {
-		qs := common.CreateQueryString("No such account, please register first!")
+	if res.Code == api.CREDENTIALS_INVALID {
+		qs := utils.CreateQueryString("No such account, please register first!")
 		http.Redirect(w, r, "/register"+qs, http.StatusSeeOther)
 		return
 	}
-	sid := res.Data[protocol.SessionId]
+	sid := res.Data[api.SessionId]
 	http.SetCookie(w, &http.Cookie{
 		Name:  auth.SESS_COOKIE_NAME,
 		Value: sid,
@@ -231,7 +230,7 @@ func processLoginRes(w http.ResponseWriter, r *http.Request, res protocol.Respon
 //	processEditRes(w, r, res)
 //}
 
-func createEditReq(r *http.Request) (protocol.Request, error) {
+func createEditReq(r *http.Request) (api.Request, error) {
 	// retrieve form values
 	nickname := r.FormValue("nickname")
 	file, header, err := r.FormFile("pic")
@@ -241,7 +240,7 @@ func createEditReq(r *http.Request) (protocol.Request, error) {
 	// enforce max size
 	if header.Size > IMG_MAXSIZE {
 		err := errors.New("Image too large: maximum " + strconv.Itoa(IMG_MAXSIZE) + " bytes.")
-		return protocol.Request{}, err
+		return api.Request{}, err
 	}
 	defer file.Close()
 
@@ -250,14 +249,14 @@ func createEditReq(r *http.Request) (protocol.Request, error) {
 	if err != nil {
 		log.Fatalln(err)
 	}
-	imgPath := fileio.ImageUpload(file, auth.GetSessionUser(cookie.Value))
+	imgPath := utils.ImageUpload(file, auth.GetSessionUser(cookie.Value))
 
 	// create return data
 	ret := make(map[string]string)
-	ret[protocol.Nickname] = nickname
-	ret[protocol.ProfilePic] = imgPath
-	ret[protocol.SessionId] = cookie.Value
-	req := protocol.Request{
+	ret[api.Nickname] = nickname
+	ret[api.ProfilePic] = imgPath
+	ret[api.SessionId] = cookie.Value
+	req := api.Request{
 		Type: "EDIT",
 		Data: ret,
 	}
@@ -265,14 +264,14 @@ func createEditReq(r *http.Request) (protocol.Request, error) {
 	return req, nil
 }
 
-func processEditRes(w http.ResponseWriter, r *http.Request, res protocol.Response) {
-	common.Print("PROCESSING EDIT RES: ", res)
+func processEditRes(w http.ResponseWriter, r *http.Request, res api.Response) {
+	utils.Print("PROCESSING EDIT RES: ", res)
 	switch res.Code {
-	case protocol.EDIT_SUCCESS:
-		qs := common.CreateQueryString("Edit Success!")
+	case api.EDIT_SUCCESS:
+		qs := utils.CreateQueryString("Edit Success!")
 		http.Redirect(w, r, "/edit"+qs, http.StatusSeeOther)
-	case protocol.EDIT_FAILED:
-		qs := common.CreateQueryString("Edit Failed...")
+	case api.EDIT_FAILED:
+		qs := utils.CreateQueryString("Edit Failed...")
 		http.Redirect(w, r, "/edit"+qs, http.StatusSeeOther)
 	}
 }
@@ -290,29 +289,29 @@ func processEditRes(w http.ResponseWriter, r *http.Request, res protocol.Respons
 //	processRegisterRes(w, r, res)
 //}
 
-func createRegisterReq(r *http.Request) protocol.Request {
+func createRegisterReq(r *http.Request) api.Request {
 	username := r.FormValue("username")
 	password := r.FormValue("password")
 	nickname := r.FormValue("nickname")
 	ret := make(map[string]string)
-	ret[protocol.Username] = username
-	ret[protocol.PwHash] = security.Hash(password)
-	ret[protocol.Nickname] = nickname
-	req := protocol.Request{
+	ret[api.Username] = username
+	ret[api.PwHash] = security.Hash(password)
+	ret[api.Nickname] = nickname
+	req := api.Request{
 		Type: "REGISTER",
 		Data: ret,
 	}
-	common.Print("CREATED REGISTER REQ: ", req)
+	utils.Print("CREATED REGISTER REQ: ", req)
 	return req
 }
 
-func processRegisterRes(w http.ResponseWriter, r *http.Request, res protocol.Response) {
-	common.Print("PROCESSING REGISTER RESPONSE: ", res)
+func processRegisterRes(w http.ResponseWriter, r *http.Request, res api.Response) {
+	utils.Print("PROCESSING REGISTER RESPONSE: ", res)
 	switch res.Code {
-	case protocol.INSERT_SUCCESS:
-		qs := common.CreateQueryString("Account created!")
+	case api.INSERT_SUCCESS:
+		qs := utils.CreateQueryString("Account created!")
 		http.Redirect(w, r, "/login?"+qs, http.StatusSeeOther)
-	case protocol.INSERT_FAILED:
+	case api.INSERT_FAILED:
 		params := url.Values{
 			"desc": {"Account creation failed, please try again!"},
 		}
@@ -333,22 +332,22 @@ func processRegisterRes(w http.ResponseWriter, r *http.Request, res protocol.Res
 //	processLogoutRes(w, r, res)
 //}
 
-func createLogoutReq(r *http.Request) protocol.Request {
+func createLogoutReq(r *http.Request) api.Request {
 	c, _ := r.Cookie(auth.SESS_COOKIE_NAME)
 	ret := make(map[string]string)
-	ret[protocol.SessionId] = c.Value
-	req := protocol.Request{
+	ret[api.SessionId] = c.Value
+	req := api.Request{
 		Type: "LOGOUT",
 		Data: ret,
 	}
-	common.Print("CREATED LOGOUT REQUEST: ", req)
+	utils.Print("CREATED LOGOUT REQUEST: ", req)
 	return req
 }
 
-func processLogoutRes(w http.ResponseWriter, r *http.Request, res protocol.Response) {
-	common.Print("PROCESSING LOGOUT RESPONSE: ", res)
+func processLogoutRes(w http.ResponseWriter, r *http.Request, res api.Response) {
+	utils.Print("PROCESSING LOGOUT RESPONSE: ", res)
 	switch res.Code {
-	case protocol.LOGOUT_SUCCESS:
+	case api.LOGOUT_SUCCESS:
 		// delete cookie
 		c, _ := r.Cookie(auth.SESS_COOKIE_NAME)
 		c = &http.Cookie{
@@ -375,29 +374,29 @@ func processLogoutRes(w http.ResponseWriter, r *http.Request, res protocol.Respo
 //}
 
 // retrieves the current user based on session cookie.
-func createHomeReq(r *http.Request) protocol.Request {
+func createHomeReq(r *http.Request) api.Request {
 	cookie, err := r.Cookie(auth.SESS_COOKIE_NAME)
 	if err != nil {
 		log.Fatalln(err)
 	}
 	// get the user details of this session id
 	data := make(map[string]string)
-	data[protocol.SessionId] = cookie.Value
-	req := protocol.Request{
+	data[api.SessionId] = cookie.Value
+	req := api.Request{
 		Type: "HOME",
 		Data: data,
 	}
-	common.Print("CREATED HOME REQUEST: ", req)
+	utils.Print("CREATED HOME REQUEST: ", req)
 	return req
 }
 
-func processHomeRes(w http.ResponseWriter, r *http.Request, res protocol.Response) {
-	common.Print("PROCESSING HOME RESPONSE: ", res)
+func processHomeRes(w http.ResponseWriter, r *http.Request, res api.Response) {
+	utils.Print("PROCESSING HOME RESPONSE: ", res)
 	switch res.Code {
-	case protocol.CREDENTIALS_INVALID:
+	case api.CREDENTIALS_INVALID:
 		renderTemplate(w, "home", res.Data)
-	case protocol.CREDENTIALS_VALID:
-		qs := common.CreateQueryString("User not found, please login!")
+	case api.CREDENTIALS_VALID:
+		qs := utils.CreateQueryString("User not found, please login!")
 		http.Redirect(w, r, "/login"+qs, http.StatusSeeOther)
 	}
 }
@@ -530,10 +529,10 @@ func initPoolSP() poolSP.Pool {
 
 func (srv *HTTPServer) withRequestId(handler http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		rid := r.Header.Get(protocol.RequestIdHeader)
+		rid := r.Header.Get(api.RequestIdHeader)
 		if rid == "" {
 			rid = uuid.NewV4().String()
-			r.Header.Set(protocol.RequestIdHeader, rid)
+			r.Header.Set(api.RequestIdHeader, rid)
 		}
 		handler(w, r)
 	}
@@ -554,7 +553,7 @@ func (srv *HTTPServer) Start() {
 	http.HandleFunc("/home", srv.homeHandler)
 	http.HandleFunc("/edit", srv.editHandler)
 	http.HandleFunc("/register", srv.registerHandler)
-	http.Handle("/assets/", http.StripPrefix("/assets", http.FileServer(http.Dir("./assets"))))
+	http.Handle("/images/", http.StripPrefix("/images", http.FileServer(http.Dir("./images"))))
 	server := &http.Server{
 		Addr:         ":" + srv.Port,
 		Handler:      http.DefaultServeMux,

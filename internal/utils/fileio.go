@@ -1,4 +1,4 @@
-package fileio
+package utils
 
 import (
 	"image"
@@ -9,13 +9,12 @@ import (
 	"log"
 	"mime/multipart"
 	"os"
-	"path"
 	"path/filepath"
 	"runtime"
 )
 
 func ReadPw() string {
-	data, err := ioutil.ReadFile(filepath.Join(RootDir() + "/dbPw.txt"))
+	data, err := ioutil.ReadFile(filepath.Join(RootDir(), "../../configs/dbPw.txt"))
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -47,7 +46,7 @@ func fileToImage(file multipart.File) image.Image {
 }
 
 func createAssetsFile(suffix string) (string, *os.File) {
-	pathsuffix := "/assets/" + suffix + ".jpg"
+	pathsuffix := "/images/" + suffix + ".jpg"
 	pathname := filepath.Join(RootDir(), pathsuffix)
 	dest, err := os.Create(pathname)
 	if err != nil {
@@ -66,6 +65,6 @@ func write(img image.Image, dest *os.File) {
 // gets the root directory where main.go is running
 func RootDir() string {
 	_, b, _, _ := runtime.Caller(0)
-	d := path.Join(path.Dir(b))
-	return filepath.Dir(d)
+	basepath := filepath.Dir(b)
+	return basepath
 }

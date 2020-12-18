@@ -2,9 +2,9 @@ package main
 
 import (
 	"encoding/gob"
-	database "example.com/kendrick/database"
-	"example.com/kendrick/protocol"
-	"example.com/kendrick/server/tcp_server/auth"
+	"example.com/kendrick/api"
+	"example.com/kendrick/internal/tcp_server/auth"
+	database "example.com/kendrick/internal/tcp_server/database"
 	"flag"
 	"fmt"
 	log "github.com/sirupsen/logrus"
@@ -30,7 +30,7 @@ const LOG_LEVEL = log.ErrorLevel
 // ********************************
 func handleError(rid string, conn net.Conn, err error) {
 	if err != nil {
-		logger := log.WithFields(log.Fields{protocol.RequestId: rid})
+		logger := log.WithFields(log.Fields{api.RequestId: rid})
 		if err == io.EOF {
 			// connection closed by HTTP server
 			logger.Error(err, " closing connection")
@@ -54,7 +54,7 @@ func handleConn(conn net.Conn) {
 	encoder := gob.NewEncoder(conn)
 	var err error
 	for err != io.EOF {
-		msgs := protocol.Request{}
+		msgs := api.Request{}
 		err = decoder.Decode(&msgs)
 		if err != nil {
 			if err != io.EOF {
@@ -78,7 +78,7 @@ func handleConn(conn net.Conn) {
 }
 
 // Invokes the relevant request handler
-func handleData(req *protocol.Request) protocol.Response {
+func handleData(req *api.Request) api.Response {
 	switch req.Type {
 	case "LOGIN":
 		// profiling.RecordLogin("LOGIN\n")
@@ -94,15 +94,15 @@ func handleData(req *protocol.Request) protocol.Response {
 	default:
 		log.Error("Unknown request source " + req.Type)
 	}
-	return protocol.Response{}
+	return api.Response{}
 }
 
-func receiveData(dec *gob.Decoder) []*protocol.Request {
+func receiveData(dec *gob.Decoder) []*api.Request {
 	log.Debug("Receiving request")
-	var reqs []*protocol.Request
+	var reqs []*api.Request
 	var err error
 	for err != io.EOF {
-		rec := protocol.Request{}
+		rec := api.Request{}
 		err = dec.Decode(&rec)
 		if err != nil {
 			log.Debug(err)
@@ -116,7 +116,7 @@ func receiveData(dec *gob.Decoder) []*protocol.Request {
 	return reqs
 }
 
-func sendResponse(data protocol.Response, enc *gob.Encoder) error {
+func sendResponse(data api.Response, enc *gob.Encoder) error {
 	log.Debug("Sending response", data)
 	err := enc.Encode(data)
 	if err != nil {
@@ -127,32 +127,32 @@ func sendResponse(data protocol.Response, enc *gob.Encoder) error {
 }
 
 // Checks the validity of username and password hash in login request.
-func handleLoginReq(req *protocol.Request) protocol.Response {
+func handleLoginReq(req *api.Request) api.Response {
 	data := req.Data
-	username := data[protocol.Username]
-	pw := data[protocol.PwPlain]
+	username := data[api.Username]
+	pw := data[api.PwPlain]
 	log.WithFields(log.Fields{
-		protocol.Username: username,
-		protocol.PwPlain:  pw,
+		api.Username: username,
+		api.PwPlain:  pw,
 	}).Debug("Handling login request")
 
 	if auth.IsValidPassword(username, pw) {
 		sid := auth.CreateSession(username)
 		ret := make(map[string]string)
-		ret[protocol.Username] = username
-		ret[protocol.SessionId] = sid
-		res := protocol.Response{
+		ret[api.Username] = username
+		ret[api.SessionId] = sid
+		res := api.Response{
 			Id:          req.Id,
-			Code:        protocol.CREDENTIALS_VALID,
+			Code:        api.CREDENTIALS_VALID,
 			Description: "Login for " + username + " succeeded",
 			Data:        ret,
 		}
 		log.Debug("Valid password")
 		return res
 	}
-	res := protocol.Response{
+	res := api.Response{
 		Id:          req.Id,
-		Code:        protocol.CREDENTIALS_INVALID,
+		Code:        api.CREDENTIALS_INVALID,
 		Description: "Login for " + username + " failed",
 		Data:        nil,
 	}
@@ -160,35 +160,35 @@ func handleLoginReq(req *protocol.Request) protocol.Response {
 	return res
 }
 
-func handleEditReq(req *protocol.Request) protocol.Response {
+func handleEditReq(req *api.Request) api.Response {
 	data := req.Data
-	sid := data[protocol.SessionId]
-	nickname := data[protocol.Nickname]
-	picPath := data[protocol.ProfilePic]
+	sid := data[api.SessionId]
+	nickname := data[api.Nickname]
+	picPath := data[api.ProfilePic]
 	username := auth.GetSessionUser(sid)
 	log.WithFields(log.Fields{
-		protocol.RequestId:  req.Id,
-		protocol.SessionId:  sid,
-		protocol.Username:   username,
-		protocol.Nickname:   nickname,
-		protocol.ProfilePic: picPath,
+		api.RequestId:  req.Id,
+		api.SessionId:  sid,
+		api.Username:   username,
+		api.Nickname:   nickname,
+		api.ProfilePic: picPath,
 	}).Debug("Handling edit request")
 
 	// Find the username, and replace the relevant details
 	numRows := database.UpdateUser(username, nickname, picPath)
 	if numRows == 1 {
-		res := protocol.Response{
+		res := api.Response{
 			Id:          req.Id,
-			Code:        protocol.EDIT_SUCCESS,
+			Code:        api.EDIT_SUCCESS,
 			Description: "Edited " + username + " successfully",
 			Data:        nil,
 		}
 		log.Debug("Valid edit")
 		return res
 	}
-	res := protocol.Response{
+	res := api.Response{
 		Id:          req.Id,
-		Code:        protocol.EDIT_FAILED,
+		Code:        api.EDIT_FAILED,
 		Description: "Editing " + username + " failed",
 		Data:        nil,
 	}
@@ -196,18 +196,18 @@ func handleEditReq(req *protocol.Request) protocol.Response {
 	return res
 }
 
-func handleLogoutReq(req *protocol.Request) protocol.Response {
+func handleLogoutReq(req *api.Request) api.Response {
 	data := req.Data
-	sid := data[protocol.SessionId]
+	sid := data[api.SessionId]
 	log.WithFields(log.Fields{
-		protocol.RequestId: req.Id,
-		protocol.SessionId: sid,
+		api.RequestId: req.Id,
+		api.SessionId: sid,
 	}).Debug("Handling logout request")
 
 	username := auth.DelSessionUser(sid)
-	res := protocol.Response{
+	res := api.Response{
 		Id:          req.Id,
-		Code:        protocol.LOGOUT_SUCCESS,
+		Code:        api.LOGOUT_SUCCESS,
 		Description: "Logged out: " + sid + " " + username,
 		Data:        nil,
 	}
@@ -215,32 +215,32 @@ func handleLogoutReq(req *protocol.Request) protocol.Response {
 	return res
 }
 
-func handleRegReq(req *protocol.Request) protocol.Response {
+func handleRegReq(req *api.Request) api.Response {
 	data := req.Data
-	nickname := data[protocol.Nickname]
-	username := data[protocol.Username]
-	password := data[protocol.PwHash]
+	nickname := data[api.Nickname]
+	username := data[api.Username]
+	password := data[api.PwHash]
 	log.WithFields(log.Fields{
-		protocol.RequestId: req.Id,
-		protocol.Username:  username,
-		protocol.PwHash:    password,
-		protocol.Nickname:  nickname,
+		api.RequestId: req.Id,
+		api.Username:  username,
+		api.PwHash:    password,
+		api.Nickname:  nickname,
 	}).Debug("Handling register request")
 
 	numRows := database.InsertUser(username, password, nickname)
 	if numRows == 1 {
-		res := protocol.Response{
+		res := api.Response{
 			Id:          req.Id,
-			Code:        protocol.INSERT_SUCCESS,
+			Code:        api.INSERT_SUCCESS,
 			Description: "INSERT: " + username + " " + password + " " + nickname,
 			Data:        nil,
 		}
 		log.Debug("Valid register")
 		return res
 	}
-	res := protocol.Response{
+	res := api.Response{
 		Id:          req.Id,
-		Code:        protocol.INSERT_FAILED,
+		Code:        api.INSERT_FAILED,
 		Description: "INSERT failed: " + username + " " + password + " " + nickname,
 		Data:        nil,
 	}
@@ -248,12 +248,12 @@ func handleRegReq(req *protocol.Request) protocol.Response {
 	return res
 }
 
-func handleHomeReq(req *protocol.Request) protocol.Response {
+func handleHomeReq(req *api.Request) api.Response {
 	data := req.Data
-	sid := data[protocol.SessionId]
+	sid := data[api.SessionId]
 	log.WithFields(log.Fields{
-		protocol.RequestId: req.Id,
-		protocol.SessionId: sid,
+		api.RequestId: req.Id,
+		api.SessionId: sid,
 	}).Debug("Handling home request")
 
 	username := auth.GetSessionUser(sid)
@@ -262,21 +262,21 @@ func handleHomeReq(req *protocol.Request) protocol.Response {
 	log.Println(rows)
 	if len(rows) == 1 {
 		ret := make(map[string]string)
-		ret[protocol.Username] = rows[0].Username
-		ret[protocol.Nickname] = rows[0].Nickname
-		ret[protocol.ProfilePic] = rows[0].ProfilePic
-		response := protocol.Response{
+		ret[api.Username] = rows[0].Username
+		ret[api.Nickname] = rows[0].Nickname
+		ret[api.ProfilePic] = rows[0].ProfilePic
+		response := api.Response{
 			Id:          req.Id,
-			Code:        protocol.CREDENTIALS_INVALID,
+			Code:        api.CREDENTIALS_INVALID,
 			Description: "User " + username + " found!",
 			Data:        ret,
 		}
 		log.Debug("Valid home request")
 		return response
 	}
-	response := protocol.Response{
+	response := api.Response{
 		Id:          req.Id,
-		Code:        protocol.CREDENTIALS_VALID,
+		Code:        api.CREDENTIALS_VALID,
 		Description: "User " + username + " not found...",
 		Data:        nil,
 	}
