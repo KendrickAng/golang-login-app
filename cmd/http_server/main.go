@@ -7,12 +7,14 @@ import (
 	"example.com/kendrick/internal/tcp_server/auth"
 	"example.com/kendrick/internal/tcp_server/security"
 	"example.com/kendrick/internal/utils"
+	"flag"
 	"fmt"
 	"github.com/satori/uuid"
 	poolSP "github.com/silenceper/pool"
 	log "github.com/sirupsen/logrus"
 	"html/template"
 	"io"
+	"io/ioutil"
 	_ "mime/multipart"
 	"net"
 	"net/http"
@@ -21,6 +23,15 @@ import (
 	"os"
 	"strconv"
 	"time"
+)
+
+var (
+	logOutput = flag.String(
+		"logoutput",
+		"",
+		"Logrus log output, NONE/FILE/STDERR/ALL, default: STDERR",
+	)
+	logLevel = flag.String("loglevel", "", "Logrus log level, DEBUG/ERROR/INFO, default: INFO")
 )
 
 const (
@@ -143,19 +154,19 @@ func (srv *HTTPServer) login(w http.ResponseWriter, r *http.Request) {
 	var res api.Response
 	// TODO: FOUND THE SLOWDOWN AREA!
 	err = conn.Dec.Decode(&res)
-	//log.Debug("Received response", res)
-	//if err != nil {
-	//	log.Info("In response")
-	//	srv.handleError(req.Id, &conn, err)
-	//	qs := common.CreateQueryString("Login failed, please try again in a while")
-	//	http.Redirect(w, r, "/login"+qs, http.StatusSeeOther)
-	//	return
-	//}
-	//log.Info("Receive login response", res)
-	//
-	//// PROCESS RESPONSE
-	//processLoginRes(w, r, res)
-	//log.WithField(protocol.RequestId, req.Id).Info("Connection closed")
+	log.Debug("Received response", res)
+	if err != nil {
+		log.Info("In response")
+		srv.handleError(req.Id, &conn, err)
+		qs := utils.CreateQueryString("Login failed, please try again in a while")
+		http.Redirect(w, r, "/login"+qs, http.StatusSeeOther)
+		return
+	}
+	log.Info("Receive login response", res)
+
+	// PROCESS RESPONSE
+	processLoginRes(w, r, res)
+	log.WithField(api.RequestId, req.Id).Info("Connection closed")
 }
 
 func createLoginReq(r *http.Request) api.Request {
@@ -464,7 +475,7 @@ func (srv *HTTPServer) logoutHandler(w http.ResponseWriter, r *http.Request) {
 	//logout(w, r)
 }
 
-func initLogger() {
+func initLogger(logLevel string, logOutput string) {
 	customFormatter := new(log.TextFormatter)
 	customFormatter.TimestampFormat = "Jan _2 15:04:05.000000"
 	customFormatter.FullTimestamp = true
@@ -477,15 +488,37 @@ func initLogger() {
 		log.Error(err)
 	}
 
-	//_, err = os.OpenFile("http.txt", os.O_TRUNC|os.O_CREATE|os.O_RDWR, 0666)
-	//file, err := os.OpenFile("http.txt", os.O_TRUNC|os.O_CREATE|os.O_RDWR, 0666)
-	if err != nil {
-		log.Error(err)
+	switch logLevel {
+	case "ERROR":
+		log.SetLevel(log.ErrorLevel)
+	case "DEBUG":
+		log.SetLevel(log.DebugLevel)
+	case "INFO":
+		fallthrough
+	default:
+		log.SetLevel(log.InfoLevel)
 	}
-	//log.SetOutput(ioutil.Discard)
-	//log.SetOutput(file)
-	//log.SetOutput(io.MultiWriter(file, os.Stdout))
-	log.SetLevel(LOG_LEVEL)
+
+	switch logOutput {
+	case "NONE":
+		log.SetOutput(ioutil.Discard)
+	case "FILE":
+		file, err := os.OpenFile("http.txt", os.O_TRUNC|os.O_CREATE|os.O_RDWR, 0666)
+		if err != nil {
+			log.Error(err)
+		}
+		log.SetOutput(file)
+	case "ALL":
+		file, err := os.OpenFile("http.txt", os.O_TRUNC|os.O_CREATE|os.O_RDWR, 0666)
+		if err != nil {
+			log.Error(err)
+		}
+		log.SetOutput(io.MultiWriter(file, os.Stdout))
+	case "STDERR":
+		fallthrough
+	default:
+		// Stderr is set by default
+	}
 }
 
 func initPool() pool.Pool {
@@ -540,9 +573,7 @@ func (srv *HTTPServer) withRequestId(handler http.HandlerFunc) http.HandlerFunc 
 
 func (srv *HTTPServer) Start() {
 	templates = template.Must(template.ParseGlob("templates/*.html"))
-	//database.Connect()
-	//profiling.InitLogFiles()
-	initLogger()
+	initLogger(*logLevel, *logOutput)
 
 	log.Info("HTTP server listening on port ", srv.Port)
 
@@ -571,6 +602,10 @@ func (srv *HTTPServer) Stop() {
 }
 
 func main() {
+	flag.Parse()
+	log.Info("LOGLEVEL: " + *logLevel)
+	log.Info("LOGOUTPUT: " + *logOutput)
+
 	server := HTTPServer{
 		Hostname: "127.0.0.1",
 		Port:     "8080",

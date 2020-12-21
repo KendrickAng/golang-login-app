@@ -9,6 +9,7 @@ import (
 	"fmt"
 	log "github.com/sirupsen/logrus"
 	"io"
+	"io/ioutil"
 	"net"
 	"os"
 	"os/signal"
@@ -21,9 +22,15 @@ type TCPServer struct {
 	Port string
 }
 
-var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
-
-const LOG_LEVEL = log.ErrorLevel
+var (
+	logOutput = flag.String(
+		"logoutput",
+		"",
+		"Logrus log output, NONE/FILE/STDERR/ALL, default: STDERR",
+	)
+	logLevel   = flag.String("loglevel", "", "Logrus log level, DEBUG/ERROR/INFO, default: INFO")
+	cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
+)
 
 // ********************************
 // *********** COMMON *************
@@ -284,7 +291,7 @@ func handleHomeReq(req *api.Request) api.Response {
 	return response
 }
 
-func initLogger() {
+func initLogger(logLevel string, logOutput string) {
 	customFormatter := new(log.TextFormatter)
 	customFormatter.TimestampFormat = "Jan _2 15:04:05.000000"
 	customFormatter.FullTimestamp = true
@@ -295,22 +302,44 @@ func initLogger() {
 	if err != nil {
 		log.Error(err)
 	}
-	//_, err = os.OpenFile("tcp.txt", os.O_TRUNC|os.O_CREATE|os.O_RDWR, 0666)
-	//file, err := os.OpenFile("tcp.txt", os.O_TRUNC|os.O_CREATE|os.O_RDWR, 0666)
-	if err != nil {
-		log.Error(err)
+	switch logLevel {
+	case "ERROR":
+		log.SetLevel(log.ErrorLevel)
+	case "DEBUG":
+		log.SetLevel(log.DebugLevel)
+	case "INFO":
+		fallthrough
+	default:
+		log.SetLevel(log.InfoLevel)
 	}
-	//log.SetOutput(ioutil.Discard)
-	//log.SetOutput(file)
-	//log.SetOutput(io.MultiWriter(file, os.Stdout))
-	log.SetLevel(LOG_LEVEL)
+
+	switch logOutput {
+	case "NONE":
+		log.SetOutput(ioutil.Discard)
+	case "FILE":
+		file, err := os.OpenFile("tcp.txt", os.O_TRUNC|os.O_CREATE|os.O_RDWR, 0666)
+		if err != nil {
+			log.Error(err)
+		}
+		log.SetOutput(file)
+	case "ALL":
+		file, err := os.OpenFile("tcp.txt", os.O_TRUNC|os.O_CREATE|os.O_RDWR, 0666)
+		if err != nil {
+			log.Error(err)
+		}
+		log.SetOutput(io.MultiWriter(file, os.Stdout))
+	case "STDERR":
+		fallthrough
+	default:
+		// Stderr is set by default
+	}
 }
 
 func (srv *TCPServer) Start() {
 	//debug.SetGCPercent(-1)
 	database.Connect()
 	database.DeleteSessions()
-	initLogger()
+	initLogger(*logLevel, *logOutput)
 
 	log.Info("TCP Server listening on port ", srv.Port)
 	ln, err := net.Listen("tcp", fmt.Sprintf(":%v", srv.Port))
@@ -343,6 +372,9 @@ func main() {
 
 	// cpu profiling
 	flag.Parse()
+	log.Info("CPUPROFILE: " + *cpuprofile)
+	log.Info("LOGLEVEL: " + *logLevel)
+	log.Info("LOGOUTPUT: " + *logOutput)
 	if *cpuprofile != "" {
 		f, err := os.Create(*cpuprofile)
 		if err != nil {
