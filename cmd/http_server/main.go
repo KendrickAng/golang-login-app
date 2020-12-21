@@ -19,7 +19,6 @@ import (
 	"net"
 	"net/http"
 	_ "net/http/pprof"
-	"net/url"
 	"os"
 	"strconv"
 	"time"
@@ -366,12 +365,10 @@ func processRegisterRes(w http.ResponseWriter, r *http.Request, res api.Response
 	switch res.Code {
 	case api.INSERT_SUCCESS:
 		qs := utils.CreateQueryString("Account created!")
-		http.Redirect(w, r, "/login?"+qs, http.StatusSeeOther)
+		http.Redirect(w, r, "/login"+qs, http.StatusSeeOther)
 	case api.INSERT_FAILED:
-		params := url.Values{
-			"desc": {"Account creation failed, please try again!"},
-		}
-		http.Redirect(w, r, "/register?"+params.Encode(), http.StatusSeeOther)
+		qs := utils.CreateQueryString("Account creation failed, please try again!")
+		http.Redirect(w, r, "/register"+qs, http.StatusSeeOther)
 	}
 }
 

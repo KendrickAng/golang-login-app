@@ -1,19 +1,33 @@
-<h1>Login</h1>
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/skeleton/2.0.4/skeleton.min.css">
+</head>
 
-{{ if . }}
-<h6>{{.}}</h6>
-{{ end }}
+<body>
+<div class="container">
+    <h1>Login</h1>
 
-<form action="/login" enctype="application/x-www-form-urlencoded" method="POST">
-    <div>
-        <label for="uname">Username</label>
-        <input type="text" name="username" id="uname" maxlength="45">
+    {{ if . }}
+    <h6>{{.}}</h6>
+    {{ end }}
+
+    <div class="row">
+        <form action="/login" enctype="application/x-www-form-urlencoded" method="POST">
+            <div class="twelve rows">
+                <label for="uname">Username</label>
+                <input class="u-full-width" type="text" name="username" id="uname" maxlength="45">
+            </div>
+            <div class="twelve rows">
+                <label for="pw">Password</label>
+                <input class="u-full-width" type="password" name="password" id="pw" maxlength="45">
+            </div>
+            <button class="button-primary" type="submit">Login</button>
+        </form>
     </div>
-    <div>
-        <label for="pw">Password</label>
-        <input type="password" name="password" id="pw" maxlength="45">
-    </div>
-    <button type="submit">Login</button>
-</form>
 
-<a href="/register">Register</a>
+    <a href="/register">Register</a>
+</div>
+
+</body>
+</html>

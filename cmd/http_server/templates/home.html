@@ -1,16 +1,32 @@
-<h1>Welcome, {{index . "nickname"}}.</h1>
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/skeleton/2.0.4/skeleton.min.css">
+</head>
 
-<h2>Profile information</h2>
+<body>
+<div class="container">
+    <h1>Welcome, {{index . "nickname"}}.</h1>
 
-<div>
-    <div>
-        {{ if .profilepic }}
+    <h2>Profile information</h2>
+
+    <div class="row">
+        <div class="twelve columns">
+            {{ if .profilepic }}
             <img src='{{index . "profilepic"}}'  alt="profile picture"/>
-        {{ end }}
+            {{ end }}
+        </div>
+        <div class="twelve columns">
+            <strong>Nickname:</strong> {{index . "nickname"}}
+        </div>
+        <div class="twelve columns">
+            <strong>Username:</strong> {{index . "username"}}
+        </div>
     </div>
-    <div>Nickname: {{index . "nickname"}}</div>
-    <div>Username: {{index . "username"}}</div>
+
+    <a href="/edit">Edit</a>
+    <a href="/logout">Logout</a>
 </div>
 
-<a href="/edit">Edit</a>
-<a href="/logout">Logout</a>
+</body>
+</html>

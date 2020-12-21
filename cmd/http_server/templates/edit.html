@@ -1,20 +1,35 @@
-<h1>Edit</h1>
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/skeleton/2.0.4/skeleton.min.css">
+</head>
 
-{{ if . }}
-<h6>{{.}}</h6>
-{{ end }}
+<body>
+    <div class="container">
+        <h1>Edit Personal Information</h1>
 
-<form action="/edit" enctype="multipart/form-data" method="POST">
-    <div>
-        <label for="nickname">New Nickname</label>
-        <input type="text" name="nickname" id="nickname" maxlength="45" required>
+        {{ if . }}
+        <h6>{{.}}</h6>
+        {{ end }}
+
+        <div class="row">
+            <form action="/edit" enctype="multipart/form-data" method="POST">
+                <div class="twelve columns">
+                    <label for="nickname">New Nickname</label>
+                    <input class="u-full-width" type="text" name="nickname" id="nickname" maxlength="45" required>
+                </div>
+                <div class="twelve columns">
+                    <label for="pic">New Profile Picture</label>
+                    <input class="u-full-width" type="file" accept="image/png, image/jpg" name="pic" id="pic" required>
+                </div>
+                <button class="button-primary" type="submit">Submit</button>
+            </form>
+        </div>
+
+        <a href="/home">Home</a>
+        <a href="/logout">Logout</a>
     </div>
-    <div>
-        <label for="pic">New Profile Picture</label>
-        <input type="file" accept="image/png, image/jpg" name="pic" id="pic" required>
-    </div>
-    <button type="submit">Submit</button>
-</form>
+</body>
 
-<a href="/home">Home</a>
-<a href="/logout">Logout</a>
+</html>
+
