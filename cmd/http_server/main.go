@@ -146,7 +146,6 @@ func (srv *HTTPServer) login(w http.ResponseWriter, r *http.Request) {
 	// RECEIVE RESPONSE
 	var res api.Response
 	err = conn.Dec.Decode(&res)
-	log.Debug("Received response", res)
 	if err != nil {
 		log.Info("In response")
 		srv.handleError(req.Id, &conn, err)
@@ -240,7 +239,6 @@ func (srv *HTTPServer) edit(w http.ResponseWriter, r *http.Request) {
 	// RECEIVE RESPONSE
 	var res api.Response
 	err = conn.Dec.Decode(&res)
-	log.Debug("Received response", res)
 	if err != nil {
 		log.Info("In response")
 		srv.handleError(req.Id, &conn, err)
@@ -277,11 +275,13 @@ func createEditReq(r *http.Request) (api.Request, error) {
 	imgPath := utils.ImageUpload(file, auth.GetSessionUser(cookie.Value))
 
 	// create return data
+	rid := r.Header.Get(api.RequestIdHeader)
 	ret := make(map[string]string)
 	ret[api.Nickname] = nickname
 	ret[api.ProfilePic] = imgPath
 	ret[api.SessionId] = cookie.Value
 	req := api.Request{
+		Id:   rid,
 		Type: "EDIT",
 		Data: ret,
 	}
@@ -331,7 +331,6 @@ func (srv *HTTPServer) registerUser(w http.ResponseWriter, r *http.Request) {
 	// RECEIVE RESPONSE
 	var res api.Response
 	err = conn.Dec.Decode(&res)
-	log.Debug("Received response", res)
 	if err != nil {
 		log.Info("In response")
 		srv.handleError(req.Id, &conn, err)
@@ -350,11 +349,13 @@ func createRegisterReq(r *http.Request) api.Request {
 	username := r.FormValue("username")
 	password := r.FormValue("password")
 	nickname := r.FormValue("nickname")
+	rid := r.Header.Get(api.RequestIdHeader)
 	ret := make(map[string]string)
 	ret[api.Username] = username
 	ret[api.PwHash] = security.Hash(password)
 	ret[api.Nickname] = nickname
 	req := api.Request{
+		Id:   rid,
 		Type: "REGISTER",
 		Data: ret,
 	}
@@ -379,7 +380,7 @@ func processRegisterRes(w http.ResponseWriter, r *http.Request, res api.Response
 // ********************************
 func (srv *HTTPServer) logout(w http.ResponseWriter, r *http.Request) {
 	req := createLogoutReq(r)
-	log.Info("Create login request", req)
+	log.Info("Create logout request", req)
 	conn, err := srv.getTcpConnPooled()
 	if err != nil {
 		log.Debug("In getTcpConnPooled")
@@ -405,7 +406,6 @@ func (srv *HTTPServer) logout(w http.ResponseWriter, r *http.Request) {
 	// RECEIVE RESPONSE
 	var res api.Response
 	err = conn.Dec.Decode(&res)
-	log.Debug("Received response", res)
 	if err != nil {
 		log.Info("In response")
 		srv.handleError(req.Id, &conn, err)
@@ -422,9 +422,11 @@ func (srv *HTTPServer) logout(w http.ResponseWriter, r *http.Request) {
 
 func createLogoutReq(r *http.Request) api.Request {
 	c, _ := r.Cookie(auth.SESS_COOKIE_NAME)
+	rid := r.Header.Get(api.RequestIdHeader)
 	ret := make(map[string]string)
 	ret[api.SessionId] = c.Value
 	req := api.Request{
+		Id:   rid,
 		Type: "LOGOUT",
 		Data: ret,
 	}
@@ -477,7 +479,6 @@ func (srv *HTTPServer) home(w http.ResponseWriter, r *http.Request) {
 	// RECEIVE RESPONSE
 	var res api.Response
 	err = conn.Dec.Decode(&res)
-	log.Debug("Received response", res)
 	if err != nil {
 		log.Info("In response")
 		srv.handleError(req.Id, &conn, err)
@@ -499,9 +500,11 @@ func createHomeReq(r *http.Request) api.Request {
 		log.Fatalln(err)
 	}
 	// get the user details of this session id
+	rid := r.Header.Get(api.RequestIdHeader)
 	data := make(map[string]string)
 	data[api.SessionId] = cookie.Value
 	req := api.Request{
+		Id:   rid,
 		Type: "HOME",
 		Data: data,
 	}
@@ -683,12 +686,12 @@ func (srv *HTTPServer) Start() {
 	log.Info("HTTP server listening on port ", srv.Port)
 
 	// have the server listen on required routes
-	http.HandleFunc("/", srv.rootHandler)
+	http.HandleFunc("/", srv.withRequestId(srv.rootHandler))
 	http.HandleFunc("/login", srv.withRequestId(srv.loginHandler))
-	http.HandleFunc("/logout", srv.logoutHandler)
-	http.HandleFunc("/home", srv.homeHandler)
-	http.HandleFunc("/edit", srv.editHandler)
-	http.HandleFunc("/register", srv.registerHandler)
+	http.HandleFunc("/logout", srv.withRequestId(srv.logoutHandler))
+	http.HandleFunc("/home", srv.withRequestId(srv.homeHandler))
+	http.HandleFunc("/edit", srv.withRequestId(srv.editHandler))
+	http.HandleFunc("/register", srv.withRequestId(srv.registerHandler))
 	http.Handle("/images/", http.StripPrefix("/images", http.FileServer(http.Dir("./images"))))
 	server := &http.Server{
 		Addr:         ":" + srv.Port,

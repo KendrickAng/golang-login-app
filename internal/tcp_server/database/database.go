@@ -32,7 +32,7 @@ func rowsToUsers(rows *sql.Rows) []api.User {
 	var ret []api.User
 	for rows.Next() {
 		var user api.User
-		err := rows.Scan(&user.Nickname, &user.Username, &user.PwHash, &user.ProfilePic)
+		err := rows.Scan(&user.Username, &user.Nickname, &user.PwHash, &user.ProfilePic)
 		if err != nil {
 			log.Panicln(err)
 		}

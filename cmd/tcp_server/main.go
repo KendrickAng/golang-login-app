@@ -88,7 +88,6 @@ func handleConn(conn net.Conn) {
 func handleData(req *api.Request) api.Response {
 	switch req.Type {
 	case "LOGIN":
-		// profiling.RecordLogin("LOGIN\n")
 		return handleLoginReq(req)
 	case "EDIT":
 		return handleEditReq(req)
@@ -264,9 +263,7 @@ func handleHomeReq(req *api.Request) api.Response {
 	}).Debug("Handling home request")
 
 	username := auth.GetSessionUser(sid)
-	log.Println(sid, username)
 	rows := database.GetUser(username)
-	log.Println(rows)
 	if len(rows) == 1 {
 		ret := make(map[string]string)
 		ret[api.Username] = rows[0].Username
@@ -274,7 +271,7 @@ func handleHomeReq(req *api.Request) api.Response {
 		ret[api.ProfilePic] = rows[0].ProfilePic
 		response := api.Response{
 			Id:          req.Id,
-			Code:        api.CREDENTIALS_INVALID,
+			Code:        api.CREDENTIALS_VALID,
 			Description: "User " + username + " found!",
 			Data:        ret,
 		}
@@ -283,7 +280,7 @@ func handleHomeReq(req *api.Request) api.Response {
 	}
 	response := api.Response{
 		Id:          req.Id,
-		Code:        api.CREDENTIALS_VALID,
+		Code:        api.CREDENTIALS_INVALID,
 		Description: "User " + username + " not found...",
 		Data:        nil,
 	}

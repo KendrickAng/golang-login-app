@@ -1,12 +1,12 @@
 package utils
 
 import (
+	log "github.com/sirupsen/logrus"
 	"image"
 	"image/jpeg"
 	_ "image/jpeg"
 	_ "image/png"
 	"io/ioutil"
-	"log"
 	"mime/multipart"
 	"os"
 	"path/filepath"
@@ -47,10 +47,15 @@ func fileToImage(file multipart.File) image.Image {
 
 func createAssetsFile(suffix string) (string, *os.File) {
 	pathsuffix := "/images/" + suffix + ".jpg"
-	pathname := filepath.Join(RootDir(), pathsuffix)
+	imgPath := "../../cmd/http_server" + pathsuffix
+	pathname := filepath.Join(RootDir(), imgPath)
+	err := os.Remove(pathname)
+	if err != nil {
+		log.Error(err)
+	}
 	dest, err := os.Create(pathname)
 	if err != nil {
-		log.Fatalln(err)
+		log.Error(err)
 	}
 	return pathsuffix, dest
 }

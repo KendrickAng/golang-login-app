@@ -4,9 +4,11 @@
 
 <div>
     <div>
-        <img src='{{index . "profilepic"}}'  alt="profile picture"/>
-        {{index . "nickname"}}
+        {{ if .profilepic }}
+            <img src='{{index . "profilepic"}}'  alt="profile picture"/>
+        {{ end }}
     </div>
+    <div>Nickname: {{index . "nickname"}}</div>
     <div>Username: {{index . "username"}}</div>
 </div>
 
