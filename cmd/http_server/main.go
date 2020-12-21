@@ -123,15 +123,13 @@ func (srv *HTTPServer) login(w http.ResponseWriter, r *http.Request) {
 	log.Info("Create login request", req)
 	conn, err := srv.getTcpConnPooled()
 	if err != nil {
-		log.Debug("In getTcpConn")
+		log.Debug("In getTcpConnPooled")
 		srv.handleError(req.Id, &conn, err)
 		qs := utils.CreateQueryString("Login failed, please try again in a while")
 		http.Redirect(w, r, "/login"+qs, http.StatusSeeOther)
 		return
 	}
 	defer srv.TcpPool.Put(&conn)
-	//defer conn.Close()
-	//err = sendReq(conn, req)
 
 	// SEND REQUEST
 	log.Debug("Sending request", req)
@@ -146,10 +144,7 @@ func (srv *HTTPServer) login(w http.ResponseWriter, r *http.Request) {
 	log.Debug("Request sent", req)
 
 	// RECEIVE RESPONSE
-	//res, err := receiveRes(conn)
-	//log.Debug("Receiving response")
 	var res api.Response
-	// TODO: FOUND THE SLOWDOWN AREA!
 	err = conn.Dec.Decode(&res)
 	log.Debug("Received response", res)
 	if err != nil {
@@ -212,31 +207,53 @@ func processLoginRes(w http.ResponseWriter, r *http.Request, res api.Response) {
 // ******************************
 // *********** EDIT *************
 // ******************************
-//func edit(w http.ResponseWriter, r *http.Request) {
-//	req, err := createEditReq(r)
-//	if err != nil {
-//		log.Println(err)
-//		http.Redirect(w, r, "/edit"+common.CreateQueryString(err.Error()), http.StatusSeeOther)
-//		return
-//	}
-//	conn := getTcpConn()
-//	defer conn.Close()
-//	err = sendReq(conn, req)
-//	if err != nil {
-//		handleError(conn, err)
-//		qs := common.CreateQueryString("Edit failed, please try again in a while")
-//		http.Redirect(w, r, "/edit" + qs, http.StatusSeeOther)
-//		return
-//	}
-//	res, err := receiveRes(conn)
-//	if err != nil {
-//		handleError(conn, err)
-//		qs := common.CreateQueryString("Edit failed, please try again in a while")
-//		http.Redirect(w, r, "/edit" + qs, http.StatusSeeOther)
-//		return
-//	}
-//	processEditRes(w, r, res)
-//}
+func (srv *HTTPServer) edit(w http.ResponseWriter, r *http.Request) {
+	req, err := createEditReq(r)
+	if err != nil {
+		log.Println(err)
+		http.Redirect(w, r, "/edit"+utils.CreateQueryString(err.Error()), http.StatusSeeOther)
+		return
+	}
+	log.Info("Create edit request", req)
+	conn, err := srv.getTcpConnPooled()
+	if err != nil {
+		log.Debug("In getTcpConnPooled")
+		srv.handleError(req.Id, &conn, err)
+		qs := utils.CreateQueryString("Edit failed, please try again later")
+		http.Redirect(w, r, "/edit"+qs, http.StatusSeeOther)
+		return
+	}
+	defer srv.TcpPool.Put(&conn)
+
+	// SEND REQUEST
+	log.Debug("Sending request", req)
+	err = conn.Enc.Encode(req)
+	if err != nil {
+		log.Debug("In request")
+		srv.handleError(req.Id, &conn, err)
+		qs := utils.CreateQueryString("Login failed, please try again in a while")
+		http.Redirect(w, r, "/edit"+qs, http.StatusSeeOther)
+		return
+	}
+	log.Debug("Request sent", req)
+
+	// RECEIVE RESPONSE
+	var res api.Response
+	err = conn.Dec.Decode(&res)
+	log.Debug("Received response", res)
+	if err != nil {
+		log.Info("In response")
+		srv.handleError(req.Id, &conn, err)
+		qs := utils.CreateQueryString("Login failed, please try again in a while")
+		http.Redirect(w, r, "/login"+qs, http.StatusSeeOther)
+		return
+	}
+	log.Info("Receive login response", res)
+
+	// PROCESS RESPONSE
+	processEditRes(w, r, res)
+	log.WithField(api.RequestId, req.Id).Info("Connection closed")
+}
 
 func createEditReq(r *http.Request) (api.Request, error) {
 	// retrieve form values
@@ -268,12 +285,10 @@ func createEditReq(r *http.Request) (api.Request, error) {
 		Type: "EDIT",
 		Data: ret,
 	}
-	log.Debug("CREATED EDIT REQUEST: ", req)
 	return req, nil
 }
 
 func processEditRes(w http.ResponseWriter, r *http.Request, res api.Response) {
-	utils.Print("PROCESSING EDIT RES: ", res)
 	switch res.Code {
 	case api.EDIT_SUCCESS:
 		qs := utils.CreateQueryString("Edit Success!")
@@ -287,15 +302,49 @@ func processEditRes(w http.ResponseWriter, r *http.Request, res api.Response) {
 // **********************************
 // *********** REGISTER *************
 // **********************************
-//func registerUser(w http.ResponseWriter, r *http.Request) {
-//	req := createRegisterReq(r)
-//	conn := getTcpConn()
-//	defer conn.Close()
-//	// TODO
-//	_ = sendReq(conn, req)
-//	res, _ := receiveRes(conn)
-//	processRegisterRes(w, r, res)
-//}
+func (srv *HTTPServer) registerUser(w http.ResponseWriter, r *http.Request) {
+	req := createRegisterReq(r)
+	log.Info("Create register request", req)
+	conn, err := srv.getTcpConnPooled()
+	if err != nil {
+		log.Debug("In getTcpConnPooled")
+		srv.handleError(req.Id, &conn, err)
+		qs := utils.CreateQueryString("Register failed, please try again in a while")
+		http.Redirect(w, r, "/register"+qs, http.StatusSeeOther)
+		return
+	}
+
+	defer srv.TcpPool.Put(&conn)
+
+	// SEND REQUEST
+	log.Debug("Sending request", req)
+	err = conn.Enc.Encode(req)
+	if err != nil {
+		log.Debug("In request")
+		srv.handleError(req.Id, &conn, err)
+		qs := utils.CreateQueryString("Register failed, please try again in a while")
+		http.Redirect(w, r, "/register"+qs, http.StatusSeeOther)
+		return
+	}
+	log.Debug("Request sent", req)
+
+	// RECEIVE RESPONSE
+	var res api.Response
+	err = conn.Dec.Decode(&res)
+	log.Debug("Received response", res)
+	if err != nil {
+		log.Info("In response")
+		srv.handleError(req.Id, &conn, err)
+		qs := utils.CreateQueryString("Register failed, please try again in a while")
+		http.Redirect(w, r, "/register"+qs, http.StatusSeeOther)
+		return
+	}
+	log.Info("Receive register response", res)
+
+	// PROCESS RESPONSE
+	processRegisterRes(w, r, res)
+	log.WithField(api.RequestId, req.Id).Info("Connection closed")
+}
 
 func createRegisterReq(r *http.Request) api.Request {
 	username := r.FormValue("username")
@@ -309,12 +358,10 @@ func createRegisterReq(r *http.Request) api.Request {
 		Type: "REGISTER",
 		Data: ret,
 	}
-	utils.Print("CREATED REGISTER REQ: ", req)
 	return req
 }
 
 func processRegisterRes(w http.ResponseWriter, r *http.Request, res api.Response) {
-	utils.Print("PROCESSING REGISTER RESPONSE: ", res)
 	switch res.Code {
 	case api.INSERT_SUCCESS:
 		qs := utils.CreateQueryString("Account created!")
@@ -330,15 +377,48 @@ func processRegisterRes(w http.ResponseWriter, r *http.Request, res api.Response
 // ********************************
 // *********** LOGOUT *************
 // ********************************
-//func logout(w http.ResponseWriter, r *http.Request) {
-//	req := createLogoutReq(r)
-//	conn := getTcpConn()
-//	defer conn.Close()
-//	// TODO
-//	_ = sendReq(conn, req)
-//	res, _ := receiveRes(conn)
-//	processLogoutRes(w, r, res)
-//}
+func (srv *HTTPServer) logout(w http.ResponseWriter, r *http.Request) {
+	req := createLogoutReq(r)
+	log.Info("Create login request", req)
+	conn, err := srv.getTcpConnPooled()
+	if err != nil {
+		log.Debug("In getTcpConnPooled")
+		srv.handleError(req.Id, &conn, err)
+		qs := utils.CreateQueryString("Logout failed, please try again in a while")
+		http.Redirect(w, r, "/home"+qs, http.StatusSeeOther)
+		return
+	}
+	defer srv.TcpPool.Put(&conn)
+
+	// SEND REQUEST
+	log.Debug("Sending request", req)
+	err = conn.Enc.Encode(req)
+	if err != nil {
+		log.Debug("In request")
+		srv.handleError(req.Id, &conn, err)
+		qs := utils.CreateQueryString("Logout failed, please try again in a while")
+		http.Redirect(w, r, "/home"+qs, http.StatusSeeOther)
+		return
+	}
+	log.Debug("Request sent", req)
+
+	// RECEIVE RESPONSE
+	var res api.Response
+	err = conn.Dec.Decode(&res)
+	log.Debug("Received response", res)
+	if err != nil {
+		log.Info("In response")
+		srv.handleError(req.Id, &conn, err)
+		qs := utils.CreateQueryString("Logout failed, please try again in a while")
+		http.Redirect(w, r, "/home"+qs, http.StatusSeeOther)
+		return
+	}
+	log.Info("Receive logout response", res)
+
+	// PROCESS RESPONSE
+	processLogoutRes(w, r, res)
+	log.WithField(api.RequestId, req.Id).Info("Connection closed")
+}
 
 func createLogoutReq(r *http.Request) api.Request {
 	c, _ := r.Cookie(auth.SESS_COOKIE_NAME)
@@ -348,12 +428,10 @@ func createLogoutReq(r *http.Request) api.Request {
 		Type: "LOGOUT",
 		Data: ret,
 	}
-	utils.Print("CREATED LOGOUT REQUEST: ", req)
 	return req
 }
 
 func processLogoutRes(w http.ResponseWriter, r *http.Request, res api.Response) {
-	utils.Print("PROCESSING LOGOUT RESPONSE: ", res)
 	switch res.Code {
 	case api.LOGOUT_SUCCESS:
 		// delete cookie
@@ -371,15 +449,48 @@ func processLogoutRes(w http.ResponseWriter, r *http.Request, res api.Response) 
 // ******************************
 // *********** HOME *************
 // ******************************
-//func home(w http.ResponseWriter, r *http.Request) {
-//	req := createHomeReq(r)
-//	conn := getTcpConn()
-//	defer conn.Close()
-//	// TODO
-//	_ = sendReq(conn, req)
-//	res, _ := receiveRes(conn)
-//	processHomeRes(w, r, res)
-//}
+func (srv *HTTPServer) home(w http.ResponseWriter, r *http.Request) {
+	req := createHomeReq(r)
+	log.Info("Create home request", req)
+	conn, err := srv.getTcpConnPooled()
+	if err != nil {
+		log.Debug("In getTcpConnPooled")
+		srv.handleError(req.Id, &conn, err)
+		qs := utils.CreateQueryString("Home failed, please try again in a while")
+		http.Redirect(w, r, "/login"+qs, http.StatusSeeOther)
+		return
+	}
+	defer srv.TcpPool.Put(&conn)
+
+	// SEND REQUEST
+	log.Debug("Sending request", req)
+	err = conn.Enc.Encode(req)
+	if err != nil {
+		log.Debug("In request")
+		srv.handleError(req.Id, &conn, err)
+		qs := utils.CreateQueryString("Home failed, please try again in a while")
+		http.Redirect(w, r, "/login"+qs, http.StatusSeeOther)
+		return
+	}
+	log.Debug("Request sent", req)
+
+	// RECEIVE RESPONSE
+	var res api.Response
+	err = conn.Dec.Decode(&res)
+	log.Debug("Received response", res)
+	if err != nil {
+		log.Info("In response")
+		srv.handleError(req.Id, &conn, err)
+		qs := utils.CreateQueryString("Home failed, please try again in a while")
+		http.Redirect(w, r, "/login"+qs, http.StatusSeeOther)
+		return
+	}
+	log.Info("Receive home response", res)
+
+	// PROCESS RESPONSE
+	processHomeRes(w, r, res)
+	log.WithField(api.RequestId, req.Id).Info("Connection closed")
+}
 
 // retrieves the current user based on session cookie.
 func createHomeReq(r *http.Request) api.Request {
@@ -394,16 +505,14 @@ func createHomeReq(r *http.Request) api.Request {
 		Type: "HOME",
 		Data: data,
 	}
-	utils.Print("CREATED HOME REQUEST: ", req)
 	return req
 }
 
 func processHomeRes(w http.ResponseWriter, r *http.Request, res api.Response) {
-	utils.Print("PROCESSING HOME RESPONSE: ", res)
 	switch res.Code {
-	case api.CREDENTIALS_INVALID:
-		renderTemplate(w, "home", res.Data)
 	case api.CREDENTIALS_VALID:
+		renderTemplate(w, "home", res.Data)
+	case api.CREDENTIALS_INVALID:
 		qs := utils.CreateQueryString("User not found, please login!")
 		http.Redirect(w, r, "/login"+qs, http.StatusSeeOther)
 	}
@@ -438,7 +547,7 @@ func (srv *HTTPServer) editHandler(w http.ResponseWriter, r *http.Request) {
 		desc := r.URL.Query().Get("desc")
 		renderTemplate(w, "edit", desc)
 	case http.MethodPost:
-		//edit(w, r)
+		srv.edit(w, r)
 	default:
 		log.Fatalln("Unused method " + r.Method)
 	}
@@ -450,7 +559,7 @@ func (srv *HTTPServer) registerHandler(w http.ResponseWriter, r *http.Request) {
 		desc := r.URL.Query().Get("desc")
 		renderTemplate(w, "register", desc)
 	case http.MethodPost:
-		//registerUser(w, r)
+		srv.registerUser(w, r)
 	default:
 		log.Fatalln("Unused method " + r.Method)
 	}
@@ -461,7 +570,7 @@ func (srv *HTTPServer) homeHandler(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
-	//home(w, r)
+	srv.home(w, r)
 }
 
 func (srv *HTTPServer) logoutHandler(w http.ResponseWriter, r *http.Request) {
@@ -469,7 +578,7 @@ func (srv *HTTPServer) logoutHandler(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
-	//logout(w, r)
+	srv.logout(w, r)
 }
 
 func initLogger(logLevel string, logOutput string) {
