@@ -24,11 +24,11 @@ type TCPServer struct {
 
 var (
 	logOutput = flag.String(
-		"logoutput",
+		"logOutput",
 		"",
 		"Logrus log output, NONE/FILE/STDERR/ALL, default: STDERR",
 	)
-	logLevel   = flag.String("loglevel", "", "Logrus log level, DEBUG/ERROR/INFO, default: INFO")
+	logLevel   = flag.String("logLevel", "", "Logrus log level, DEBUG/ERROR/INFO, default: INFO")
 	cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
 )
 
@@ -376,6 +376,10 @@ func main() {
 	log.Info("LOGLEVEL: " + *logLevel)
 	log.Info("LOGOUTPUT: " + *logOutput)
 	if *cpuprofile != "" {
+		err := os.Remove(*cpuprofile)
+		if err != nil {
+			log.Error(err)
+		}
 		f, err := os.Create(*cpuprofile)
 		if err != nil {
 			log.Fatal(err)

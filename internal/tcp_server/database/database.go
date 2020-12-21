@@ -18,6 +18,15 @@ const (
 	DUP_PKEY = 1062
 )
 
+var (
+	updateUser    *sql.Stmt
+	insertUser    *sql.Stmt
+	getUser       *sql.Stmt
+	insertSession *sql.Stmt
+	deleteSession *sql.Stmt
+	getSession    *sql.Stmt
+)
+
 // Converts sql return statement to slice of User
 func rowsToUsers(rows *sql.Rows) []api.User {
 	var ret []api.User
@@ -47,7 +56,7 @@ func rowsToSessions(rows *sql.Rows) []api.Session {
 
 func UpdateUser(key string, nickname string, picPath string) int64 {
 	ensureConnected(db)
-	result, err := db.Exec("UPDATE users_test SET nickname=?, profile_pic=? WHERE username=?", nickname, picPath, key)
+	result, err := updateUser.Exec(nickname, picPath, key)
 	if err != nil {
 		log.Panicln(err)
 	}
@@ -59,7 +68,7 @@ func UpdateUser(key string, nickname string, picPath string) int64 {
 
 func InsertUser(username string, pwHash string, nickname string) int64 {
 	ensureConnected(db)
-	result, err := db.Exec("INSERT INTO users_test VALUES (?, ?, ?, ?)", username, nickname, pwHash, sql.NullString{})
+	result, err := insertUser.Exec(username, nickname, pwHash, sql.NullString{})
 	if err != nil {
 		// duplicate username pkey
 		if me, ok := err.(*mysql.MySQLError); ok && me.Number == DUP_PKEY {
@@ -75,7 +84,7 @@ func InsertUser(username string, pwHash string, nickname string) int64 {
 // Retrieves a user based on key (his unique username)
 func GetUser(key string) []api.User {
 	ensureConnected(db)
-	res, err := db.Query("SELECT username, nickname, pw_hash, COALESCE(profile_pic, '') FROM users_test WHERE username = ?", key)
+	res, err := getUser.Query(key)
 	if err != nil {
 		log.Panicln(err)
 	}
@@ -89,7 +98,7 @@ func GetUser(key string) []api.User {
 
 func InsertSession(uuid string, username string) int64 {
 	ensureConnected(db)
-	result, err := db.Exec("INSERT INTO sessions VALUES (?, ?)", uuid, username)
+	result, err := insertSession.Exec(uuid, username)
 	if utils.IsError(err) {
 		return 0
 	}
@@ -103,7 +112,7 @@ func InsertSession(uuid string, username string) int64 {
 
 func DeleteSession(uuid string) int64 {
 	ensureConnected(db)
-	result, err := db.Exec("DELETE FROM sessions WHERE uuid = ?", uuid)
+	result, err := deleteSession.Exec(uuid)
 	if err != nil {
 		log.Panicln(err)
 	}
@@ -114,7 +123,7 @@ func DeleteSession(uuid string) int64 {
 
 func GetSession(uuid string) []api.Session {
 	ensureConnected(db)
-	rows, err := db.Query("SELECT uuid, username FROM sessions WHERE uuid=?", uuid)
+	rows, err := getSession.Query(uuid)
 	if err != nil {
 		log.Panicln(err)
 	}
@@ -148,6 +157,32 @@ func Connect() {
 	if err != nil {
 		log.Panicln(err.Error())
 	}
+	// Prepare statements
+	updateUser, err = db.Prepare("UPDATE users_test SET nickname=?, profile_pic=? WHERE username=?")
+	if err != nil {
+		log.Panicln(err)
+	}
+	insertUser, err = db.Prepare("INSERT INTO users_test VALUES (?, ?, ?, ?)")
+	if err != nil {
+		log.Panicln(err)
+	}
+	getUser, err = db.Prepare("SELECT username, nickname, pw_hash, COALESCE(profile_pic, '') FROM users_test WHERE username = ?")
+	if err != nil {
+		log.Panicln(err)
+	}
+	insertSession, err = db.Prepare("INSERT INTO sessions VALUES (?, ?)")
+	if err != nil {
+		log.Panicln(err)
+	}
+	deleteSession, err = db.Prepare("DELETE FROM sessions WHERE uuid = ?")
+	if err != nil {
+		log.Panicln(err)
+	}
+	getSession, err = db.Prepare("SELECT uuid, username FROM sessions WHERE uuid=?")
+	if err != nil {
+		log.Panicln(err)
+	}
+
 	db.SetMaxOpenConns(100)
 	db.SetMaxIdleConns(150)
 	db.SetConnMaxLifetime(time.Second * 60)

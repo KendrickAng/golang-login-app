@@ -27,17 +27,14 @@ import (
 
 var (
 	logOutput = flag.String(
-		"logoutput",
+		"logOutput",
 		"",
 		"Logrus log output, NONE/FILE/STDERR/ALL, default: STDERR",
 	)
-	logLevel = flag.String("loglevel", "", "Logrus log level, DEBUG/ERROR/INFO, default: INFO")
+	logLevel = flag.String("logLevel", "", "Logrus log level, DEBUG/ERROR/INFO, default: INFO")
 )
 
-const (
-	IMG_MAXSIZE = 1 << 12 // 2^12
-	LOG_LEVEL   = log.ErrorLevel
-)
+const IMG_MAXSIZE = 1 << 12 // 2^12
 
 type HTTPServer struct {
 	Server   http.Server
@@ -481,7 +478,6 @@ func initLogger(logLevel string, logOutput string) {
 	customFormatter.FullTimestamp = true
 	customFormatter.ForceColors = false
 	customFormatter.DisableColors = true
-	//logger = log.New()
 	log.SetFormatter(customFormatter)
 	err := os.Remove("http.txt")
 	if err != nil {
