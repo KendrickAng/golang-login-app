@@ -3,13 +3,15 @@ package database
 import (
 	"database/sql"
 	"example.com/kendrick/api"
+	"example.com/kendrick/internal/tcp_server/cache"
 	"example.com/kendrick/internal/utils"
 	"github.com/go-sql-driver/mysql"
 	_ "github.com/go-sql-driver/mysql"
-	"log"
+	log "github.com/sirupsen/logrus"
 	"time"
 )
 
+var dbCache cache.DBCache
 var db *sql.DB
 var pw string = ""
 
@@ -84,16 +86,21 @@ func InsertUser(username string, pwHash string, nickname string) int64 {
 // Retrieves a user based on key (his unique username)
 func GetUser(key string) []api.User {
 	ensureConnected(db)
-	res, err := getUser.Query(key)
+	userRows, err := dbCache.GetUser(key)
 	if err != nil {
-		log.Panicln(err)
+		res, err := getUser.Query(key)
+		if utils.IsError(err) {
+			return nil
+		}
+		defer res.Close()
+		ret := rowsToUsers(res)
+		err = dbCache.SetUser(key, userRows)
+		if utils.IsError(err) {
+			return nil
+		}
+		return ret
 	}
-	defer res.Close()
-	ret := rowsToUsers(res)
-	if len(ret) > 1 {
-		log.Panicln("GET USER: too many rows for key " + key)
-	}
-	return ret
+	return *userRows
 }
 
 func InsertSession(uuid string, username string) int64 {
@@ -113,8 +120,8 @@ func InsertSession(uuid string, username string) int64 {
 func DeleteSession(uuid string) int64 {
 	ensureConnected(db)
 	result, err := deleteSession.Exec(uuid)
-	if err != nil {
-		log.Panicln(err)
+	if utils.IsError(err) {
+		return 0
 	}
 	log.Println("DELETE sessions: uuid: " + uuid)
 	rows, err := result.RowsAffected()
@@ -122,17 +129,23 @@ func DeleteSession(uuid string) int64 {
 }
 
 func GetSession(uuid string) []api.Session {
-	ensureConnected(db)
-	rows, err := getSession.Query(uuid)
+	//ensureConnected(db)
+	sessRows, err := dbCache.GetSession(uuid)
 	if err != nil {
-		log.Panicln(err)
+		log.Error(err)
+		rows, err := getSession.Query(uuid)
+		if utils.IsError(err) {
+			return nil
+		}
+		defer rows.Close()
+		ret := rowsToSessions(rows)
+		err = dbCache.SetSession(uuid, ret)
+		if utils.IsError(err) {
+			return nil
+		}
+		return ret
 	}
-	defer rows.Close()
-	ret := rowsToSessions(rows)
-	if len(ret) > 1 {
-		log.Panicln("GET SESSION: Too many sessions for " + uuid)
-	}
-	return ret
+	return *sessRows
 }
 
 func DeleteSessions() int64 {
@@ -182,6 +195,8 @@ func Connect() {
 	if err != nil {
 		log.Panicln(err)
 	}
+	// Prepare redis cache - default database
+	dbCache = cache.NewRedisCache("localhost:6379", 0)
 
 	db.SetMaxOpenConns(100)
 	db.SetMaxIdleConns(150)

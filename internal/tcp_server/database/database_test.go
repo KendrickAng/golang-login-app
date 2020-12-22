@@ -75,3 +75,51 @@ func BenchmarkInsertSessionPreparedStmt(b *testing.B) {
 	}
 	db.Close()
 }
+
+func BenchmarkGetSession(b *testing.B) {
+	pwBytes, err := ioutil.ReadFile(filepath.Join(utils.RootDir(), "../../configs/dbPw.txt"))
+	if err != nil {
+		log.Fatalln(err)
+	}
+	pw := string(pwBytes)
+	db, err := sql.Open("mysql", "root:"+pw+"@tcp(localhost:3306)/users_db")
+	if err != nil {
+		log.Panicln(err.Error())
+	}
+	_, err = db.Exec("DELETE FROM sessions")
+	if err != nil {
+		log.Panicln(err)
+	}
+	getSession, err = db.Prepare("SELECT uuid, username FROM sessions WHERE uuid=?")
+	if err != nil {
+		log.Panicln(err)
+	}
+
+	// main loop
+	for i := 0; i < b.N; i++ {
+		rows, err := getSession.Query("12345")
+		if err != nil {
+			log.Fatalln(err)
+		}
+		rowsToSessions(rows)
+		rows.Close()
+	}
+
+	_, err = db.Exec("DELETE FROM sessions")
+	if err != nil {
+		log.Panicln(err)
+	}
+	db.Close()
+}
+
+func BenchmarkGetSessionWithRedis(b *testing.B) {
+	Connect()
+
+	// main loop
+	for i := 0; i < b.N; i++ {
+		GetSession("12345")
+	}
+
+	DeleteSessions()
+	db.Close()
+}

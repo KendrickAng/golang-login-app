@@ -1,7 +1,7 @@
 package utils
 
 import (
-	"log"
+	log "github.com/sirupsen/logrus"
 	"net/url"
 )
 
@@ -21,7 +21,7 @@ func Print(text string, data ...interface{}) {
 
 func IsError(err error) bool {
 	if err != nil {
-		log.Println(err.Error())
+		log.Error(err)
 		return true
 	}
 	return false
