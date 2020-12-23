@@ -7,10 +7,12 @@ import (
 )
 
 const (
-	SESS_COOKIE_NAME = "session"
+	SESS_COOKIE_NAME     = "session"
+	USERNAME_COOKIE_NAME = "username"
 )
 
-var validPwCache = make(map[string]bool, 250)
+// valid username-password pairs will be stored here
+var validPwCache = make(map[string]string, 250)
 
 /*
 This package handles authentication, session creation/deletion, cookie creation/deletion, uuid creation.
@@ -22,11 +24,13 @@ func IsValidPassword(username string, pw string) bool {
 		return false
 	}
 	// try to get from cache first
-	if isValid, ok := validPwCache[username]; ok {
-		return isValid
+	if validPw, ok := validPwCache[username]; ok {
+		return validPw == pw
 	} else {
 		isPwValid := security.ComparePwHash(pw, users[0].PwHash)
-		validPwCache[username] = isPwValid
+		if isPwValid {
+			validPwCache[username] = pw
+		}
 		return isPwValid
 	}
 }

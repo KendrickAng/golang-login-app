@@ -72,11 +72,10 @@ func handleConn(conn net.Conn) {
 		//msgs := receiveData(decoder)
 		log.Info("Receive request success", msgs)
 		response := handleData(&msgs)
-		log.Info("Sending response", msgs)
+		log.Info("Sending response", response)
 		err = encoder.Encode(response)
 		//err := sendResponse(response, encoder)
 		if err != nil {
-			log.Error("Send response failed", msgs)
 			handleError(msgs.Id, conn, err)
 			return
 		}
@@ -171,7 +170,7 @@ func handleEditReq(req *api.Request) api.Response {
 	sid := data[api.SessionId]
 	nickname := data[api.Nickname]
 	picPath := data[api.ProfilePic]
-	username := auth.GetSessionUser(sid)
+	username := data[api.Username]
 	log.WithFields(log.Fields{
 		api.RequestId:  req.Id,
 		api.SessionId:  sid,
@@ -263,7 +262,9 @@ func handleHomeReq(req *api.Request) api.Response {
 	}).Debug("Handling home request")
 
 	username := auth.GetSessionUser(sid)
+	log.Debug(username)
 	rows := database.GetUser(username)
+	log.Debug(rows)
 	if len(rows) == 1 {
 		ret := make(map[string]string)
 		ret[api.Username] = rows[0].Username

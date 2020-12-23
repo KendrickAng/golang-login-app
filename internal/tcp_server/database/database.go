@@ -62,9 +62,23 @@ func UpdateUser(key string, nickname string, picPath string) int64 {
 	if err != nil {
 		log.Panicln(err)
 	}
-	log.Println("UPDATE: username: " + key + " | nickname: " + nickname + " | profile_pic: " + picPath)
+	log.Debug("UPDATE: username: " + key + " | nickname: " + nickname + " | profile_pic: " + picPath)
 	var rows int64
 	rows, err = result.RowsAffected()
+	if rows == 1 {
+		// update the redis cache
+		res, err := getUser.Query(key)
+		if utils.IsError(err) {
+			return rows
+		}
+		defer res.Close()
+		newRows := rowsToUsers(res)
+		err = dbCache.SetUser(key, &newRows)
+		if utils.IsError(err) {
+			return rows
+		}
+		log.Debug("UPDATE redis user cache ", newRows)
+	}
 	return rows
 }
 
@@ -88,13 +102,14 @@ func GetUser(key string) []api.User {
 	ensureConnected(db)
 	userRows, err := dbCache.GetUser(key)
 	if err != nil {
+		log.Error(err)
 		res, err := getUser.Query(key)
 		if utils.IsError(err) {
 			return nil
 		}
 		defer res.Close()
 		ret := rowsToUsers(res)
-		err = dbCache.SetUser(key, userRows)
+		err = dbCache.SetUser(key, &ret)
 		if utils.IsError(err) {
 			return nil
 		}
@@ -109,7 +124,7 @@ func InsertSession(uuid string, username string) int64 {
 	if utils.IsError(err) {
 		return 0
 	}
-	//log.Println("INSERT SESSION: uuid: " + uuid + " | username: " + username)
+	//log.Debug("INSERT SESSION: uuid: " + uuid + " | username: " + username)
 	rows, err := result.RowsAffected()
 	if rows != 1 {
 		log.Println("CREATE SESSION: one row not inserted!")

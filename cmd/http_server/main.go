@@ -193,9 +193,14 @@ func processLoginRes(w http.ResponseWriter, r *http.Request, res api.Response) {
 		return
 	}
 	sid := res.Data[api.SessionId]
+	username := res.Data[api.Username]
 	http.SetCookie(w, &http.Cookie{
 		Name:  auth.SESS_COOKIE_NAME,
 		Value: sid,
+	})
+	http.SetCookie(w, &http.Cookie{
+		Name:  auth.USERNAME_COOKIE_NAME,
+		Value: username,
 	})
 	http.Redirect(w, r, "/home", http.StatusSeeOther)
 	logger.Debug("Processed login response")
@@ -229,7 +234,7 @@ func (srv *HTTPServer) edit(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Debug("In request")
 		srv.handleError(req.Id, &conn, err)
-		qs := utils.CreateQueryString("Login failed, please try again in a while")
+		qs := utils.CreateQueryString("Edit failed, please try again in a while")
 		http.Redirect(w, r, "/edit"+qs, http.StatusSeeOther)
 		return
 	}
@@ -241,11 +246,11 @@ func (srv *HTTPServer) edit(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Info("In response")
 		srv.handleError(req.Id, &conn, err)
-		qs := utils.CreateQueryString("Login failed, please try again in a while")
-		http.Redirect(w, r, "/login"+qs, http.StatusSeeOther)
+		qs := utils.CreateQueryString("Edit failed, please try again in a while")
+		http.Redirect(w, r, "/edit"+qs, http.StatusSeeOther)
 		return
 	}
-	log.Info("Receive login response", res)
+	log.Info("Receive edit response", res)
 
 	// PROCESS RESPONSE
 	processEditRes(w, r, res)
@@ -267,18 +272,25 @@ func createEditReq(r *http.Request) (api.Request, error) {
 	defer file.Close()
 
 	// store image persistently
-	cookie, err := r.Cookie(auth.SESS_COOKIE_NAME)
+	unameCookie, err := r.Cookie(auth.USERNAME_COOKIE_NAME)
 	if err != nil {
-		log.Fatalln(err)
+		log.Error(err)
+		return api.Request{}, err
 	}
-	imgPath := utils.ImageUpload(file, auth.GetSessionUser(cookie.Value))
+	imgPath := utils.ImageUpload(file, unameCookie.Value)
+	sidCookie, err := r.Cookie(auth.SESS_COOKIE_NAME)
+	if err != nil {
+		log.Error(err)
+		return api.Request{}, err
+	}
 
 	// create return data
 	rid := r.Header.Get(api.RequestIdHeader)
 	ret := make(map[string]string)
 	ret[api.Nickname] = nickname
 	ret[api.ProfilePic] = imgPath
-	ret[api.SessionId] = cookie.Value
+	ret[api.SessionId] = sidCookie.Value
+	ret[api.Username] = unameCookie.Value
 	req := api.Request{
 		Id:   rid,
 		Type: "EDIT",
