@@ -33,7 +33,10 @@ var (
 	logLevel = flag.String("logLevel", "", "Logrus log level, DEBUG/ERROR/INFO, default: INFO")
 )
 
-const IMG_MAXSIZE = 1 << 12 // 2^12
+const (
+	COOKIE_TIMEOUT = time.Hour * 24
+	IMG_MAXSIZE    = 1 << 12 // 2^12
+)
 
 type HTTPServer struct {
 	Server   http.Server
@@ -114,10 +117,6 @@ func (srv *HTTPServer) getTcpConn() (net.Conn, error) {
 // *******************************
 // Main handler called when logging in
 func (srv *HTTPServer) login(w http.ResponseWriter, r *http.Request) {
-	if isLoggedIn(getSid(r)) {
-		http.Redirect(w, r, "/home", http.StatusSeeOther)
-		return
-	}
 	req := createLoginReq(r)
 	log.Info("Create login request", req)
 	conn, err := srv.getTcpConnPooled()
@@ -195,12 +194,14 @@ func processLoginRes(w http.ResponseWriter, r *http.Request, res api.Response) {
 	sid := res.Data[api.SessionId]
 	username := res.Data[api.Username]
 	http.SetCookie(w, &http.Cookie{
-		Name:  auth.SESS_COOKIE_NAME,
-		Value: sid,
+		Name:    auth.SESS_COOKIE_NAME,
+		Value:   sid,
+		Expires: time.Now().Add(COOKIE_TIMEOUT),
 	})
 	http.SetCookie(w, &http.Cookie{
-		Name:  auth.USERNAME_COOKIE_NAME,
-		Value: username,
+		Name:    auth.USERNAME_COOKIE_NAME,
+		Value:   username,
+		Expires: time.Now().Add(COOKIE_TIMEOUT),
 	})
 	http.Redirect(w, r, "/home", http.StatusSeeOther)
 	logger.Debug("Processed login response")
@@ -534,6 +535,10 @@ func processHomeRes(w http.ResponseWriter, r *http.Request, res api.Response) {
 // *********** HTTP HANDLERS *************
 // ***************************************
 func (srv *HTTPServer) rootHandler(w http.ResponseWriter, r *http.Request) {
+	if isLoggedIn(getSid(r)) {
+		http.Redirect(w, r, "/home", http.StatusSeeOther)
+		return
+	}
 	http.Redirect(w, r, "/login", http.StatusMovedPermanently)
 }
 
@@ -578,7 +583,7 @@ func (srv *HTTPServer) registerHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (srv *HTTPServer) homeHandler(w http.ResponseWriter, r *http.Request) {
-	if !isLoggedIn(getSid(r)) {
+	if !(isLoggedIn(getSid(r))) {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
@@ -714,7 +719,7 @@ func (srv *HTTPServer) Start() {
 }
 
 func (srv *HTTPServer) Stop() {
-	srv.TcpPool.Stats()
+	srv.TcpPool.PrintStats()
 	log.Info("HTTP server stopped.")
 }
 

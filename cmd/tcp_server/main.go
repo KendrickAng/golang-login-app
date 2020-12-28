@@ -69,12 +69,10 @@ func handleConn(conn net.Conn) {
 			}
 			continue
 		}
-		//msgs := receiveData(decoder)
 		log.Info("Receive request success", msgs)
 		response := handleData(&msgs)
 		log.Info("Sending response", response)
 		err = encoder.Encode(response)
-		//err := sendResponse(response, encoder)
 		if err != nil {
 			handleError(msgs.Id, conn, err)
 			return
@@ -102,35 +100,6 @@ func handleData(req *api.Request) api.Response {
 	return api.Response{}
 }
 
-func receiveData(dec *gob.Decoder) []*api.Request {
-	log.Debug("Receiving request")
-	var reqs []*api.Request
-	var err error
-	for err != io.EOF {
-		rec := api.Request{}
-		err = dec.Decode(&rec)
-		if err != nil {
-			log.Debug(err)
-			continue
-		}
-		reqs = append(reqs, &rec)
-		log.Debug(reqs)
-	}
-
-	log.Debug("Received requests", reqs)
-	return reqs
-}
-
-func sendResponse(data api.Response, enc *gob.Encoder) error {
-	log.Debug("Sending response", data)
-	err := enc.Encode(data)
-	if err != nil {
-		return err
-	}
-	log.Debug("Sent response", data)
-	return nil
-}
-
 // Checks the validity of username and password hash in login request.
 func handleLoginReq(req *api.Request) api.Response {
 	data := req.Data
@@ -142,6 +111,7 @@ func handleLoginReq(req *api.Request) api.Response {
 	}).Debug("Handling login request")
 
 	if auth.IsValidPassword(username, pw) {
+		// TODO: use session manager
 		sid := auth.CreateSession(username)
 		ret := make(map[string]string)
 		ret[api.Username] = username
@@ -209,6 +179,7 @@ func handleLogoutReq(req *api.Request) api.Response {
 		api.SessionId: sid,
 	}).Debug("Handling logout request")
 
+	// TODO: use session manager
 	username := auth.DelSessionUser(sid)
 	res := api.Response{
 		Id:          req.Id,
@@ -334,7 +305,6 @@ func initLogger(logLevel string, logOutput string) {
 }
 
 func (srv *TCPServer) Start() {
-	//debug.SetGCPercent(-1)
 	database.Connect()
 	database.DeleteSessions()
 	initLogger(*logLevel, *logOutput)
