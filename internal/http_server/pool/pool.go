@@ -10,7 +10,7 @@ type Pool interface {
 	Get() (TcpConn, error)
 	Put(*TcpConn)
 	Destroy(*TcpConn) error
-	Stats()
+	PrintStats()
 }
 
 type TcpPool struct {
@@ -92,7 +92,7 @@ func (pool *TcpPool) Destroy(conn *TcpConn) error {
 	return err
 }
 
-func (pool *TcpPool) Stats() {
+func (pool *TcpPool) PrintStats() {
 	fmt.Printf("Total: %v, Allocated: %v, Reused: %v\n", pool.total, pool.alloced, pool.reused)
 }
 
