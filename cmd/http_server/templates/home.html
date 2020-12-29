@@ -6,21 +6,21 @@
 
 <body>
 <div class="container">
-    <h1>Welcome, {{index . "nickname"}}.</h1>
+    <h1>Welcome, {{.Nickname}}.</h1>
 
     <h2>Profile information</h2>
 
     <div class="row">
         <div class="twelve columns">
-            {{ if .profilepic }}
-            <img src='{{index . "profilepic"}}'  alt="profile picture"/>
+            {{ if .ProfilePic }}
+            <img src='{{.ProfilePic}}'  alt="profile picture"/>
             {{ end }}
         </div>
         <div class="twelve columns">
-            <strong>Nickname:</strong> {{index . "nickname"}}
+            <strong>Nickname:</strong> {{.Username}}
         </div>
         <div class="twelve columns">
-            <strong>Username:</strong> {{index . "username"}}
+            <strong>Username:</strong> {{.Nickname}}
         </div>
     </div>
 

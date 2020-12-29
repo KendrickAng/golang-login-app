@@ -1,16 +1,14 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"example.com/kendrick/api"
 	"example.com/kendrick/internal/http_server/pool"
 	"example.com/kendrick/internal/tcp_server/auth"
-	"example.com/kendrick/internal/tcp_server/security"
-	"example.com/kendrick/internal/utils"
 	"flag"
 	"fmt"
 	"github.com/satori/uuid"
-	poolSP "github.com/silenceper/pool"
 	log "github.com/sirupsen/logrus"
 	"html/template"
 	"io"
@@ -20,7 +18,6 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"os"
-	"strconv"
 	"time"
 )
 
@@ -30,7 +27,8 @@ var (
 		"",
 		"Logrus log output, NONE/FILE/STDERR/ALL, default: STDERR",
 	)
-	logLevel = flag.String("logLevel", "", "Logrus log level, DEBUG/ERROR/INFO, default: INFO")
+	logLevel    = flag.String("logLevel", "", "Logrus log level, DEBUG/ERROR/INFO, default: INFO")
+	CONTEXT_KEY = uuid.NewV4()
 )
 
 const (
@@ -46,7 +44,6 @@ type HTTPServer struct {
 }
 
 var templates *template.Template
-var logger *log.Logger
 
 // ********************************
 // *********** COMMON *************
@@ -82,11 +79,6 @@ func (srv *HTTPServer) handleError(rid string, conn *pool.TcpConn, err error) {
 			if err != nil {
 				logger.Error(err)
 			}
-			//srv.TcpPool.Close(conn)
-			//if err != nil {
-			//	logger.Error(err)
-			//}
-			//conn.Close()
 		} else if errors.Is(err, os.ErrDeadlineExceeded) {
 			// read deadline exceeded, do nothing
 			logger.Error(err)
@@ -112,490 +104,45 @@ func (srv *HTTPServer) getTcpConn() (net.Conn, error) {
 	return conn, err
 }
 
-// *******************************
-// *********** LOGIN *************
-// *******************************
-// Main handler called when logging in
-func (srv *HTTPServer) login(w http.ResponseWriter, r *http.Request) {
-	req := createLoginReq(r)
-	log.Info("Create login request", req)
-	conn, err := srv.getTcpConnPooled()
-	if err != nil {
-		log.Debug("In getTcpConnPooled")
-		srv.handleError(req.Id, &conn, err)
-		qs := utils.CreateQueryString("Login failed, please try again in a while")
-		http.Redirect(w, r, "/login"+qs, http.StatusSeeOther)
-		return
-	}
-	defer srv.TcpPool.Put(&conn)
-
-	// SEND REQUEST
-	log.Debug("Sending request", req)
-	err = conn.Enc.Encode(req)
-	if err != nil {
-		log.Debug("In request")
-		srv.handleError(req.Id, &conn, err)
-		qs := utils.CreateQueryString("Login failed, please try again in a while")
-		http.Redirect(w, r, "/login"+qs, http.StatusSeeOther)
-		return
-	}
-	log.Debug("Request sent", req)
-
-	// RECEIVE RESPONSE
-	var res api.Response
-	err = conn.Dec.Decode(&res)
-	if err != nil {
-		log.Info("In response")
-		srv.handleError(req.Id, &conn, err)
-		qs := utils.CreateQueryString("Login failed, please try again in a while")
-		http.Redirect(w, r, "/login"+qs, http.StatusSeeOther)
-		return
-	}
-	log.Info("Receive login response", res)
-
-	// PROCESS RESPONSE
-	processLoginRes(w, r, res)
-	log.WithField(api.RequestId, req.Id).Info("Connection closed")
-}
-
-func createLoginReq(r *http.Request) api.Request {
-	log.Debug("Creating login request")
-	username := r.FormValue("username")
-	password := r.FormValue("password")
-	rid := r.Header.Get(api.RequestIdHeader)
-	ret := make(map[string]string)
-	ret[api.Username] = username
-	ret[api.PwPlain] = password
-	req := api.Request{
-		Id:   rid,
-		Type: "LOGIN",
-		Data: ret,
-	}
-	log.WithFields(log.Fields{
-		api.RequestId: rid,
-		api.Username:  username,
-		api.PwPlain:   password,
-	}).Debug("Created login request")
-	return req
-}
-
-func processLoginRes(w http.ResponseWriter, r *http.Request, res api.Response) {
-	logger := log.WithFields(log.Fields{
-		api.RequestId: res.Id,
-		api.ResCode:   res.Code,
-		api.ResDesc:   res.Description,
-	})
-	logger.Debug("Processing login response")
-	if res.Code == api.CREDENTIALS_INVALID {
-		qs := utils.CreateQueryString("No such account, please register first!")
-		http.Redirect(w, r, "/register"+qs, http.StatusSeeOther)
-		return
-	}
-	sid := res.Data[api.SessionId]
-	username := res.Data[api.Username]
-	http.SetCookie(w, &http.Cookie{
-		Name:    auth.SESS_COOKIE_NAME,
-		Value:   sid,
-		Expires: time.Now().Add(COOKIE_TIMEOUT),
-	})
-	http.SetCookie(w, &http.Cookie{
-		Name:    auth.USERNAME_COOKIE_NAME,
-		Value:   username,
-		Expires: time.Now().Add(COOKIE_TIMEOUT),
-	})
-	http.Redirect(w, r, "/home", http.StatusSeeOther)
-	logger.Debug("Processed login response")
-	return
-}
-
-// ******************************
-// *********** EDIT *************
-// ******************************
-func (srv *HTTPServer) edit(w http.ResponseWriter, r *http.Request) {
-	req, err := createEditReq(r)
-	if err != nil {
-		log.Println(err)
-		http.Redirect(w, r, "/edit"+utils.CreateQueryString(err.Error()), http.StatusSeeOther)
-		return
-	}
-	log.Info("Create edit request", req)
-	conn, err := srv.getTcpConnPooled()
-	if err != nil {
-		log.Debug("In getTcpConnPooled")
-		srv.handleError(req.Id, &conn, err)
-		qs := utils.CreateQueryString("Edit failed, please try again later")
-		http.Redirect(w, r, "/edit"+qs, http.StatusSeeOther)
-		return
-	}
-	defer srv.TcpPool.Put(&conn)
-
-	// SEND REQUEST
-	log.Debug("Sending request", req)
-	err = conn.Enc.Encode(req)
-	if err != nil {
-		log.Debug("In request")
-		srv.handleError(req.Id, &conn, err)
-		qs := utils.CreateQueryString("Edit failed, please try again in a while")
-		http.Redirect(w, r, "/edit"+qs, http.StatusSeeOther)
-		return
-	}
-	log.Debug("Request sent", req)
-
-	// RECEIVE RESPONSE
-	var res api.Response
-	err = conn.Dec.Decode(&res)
-	if err != nil {
-		log.Info("In response")
-		srv.handleError(req.Id, &conn, err)
-		qs := utils.CreateQueryString("Edit failed, please try again in a while")
-		http.Redirect(w, r, "/edit"+qs, http.StatusSeeOther)
-		return
-	}
-	log.Info("Receive edit response", res)
-
-	// PROCESS RESPONSE
-	processEditRes(w, r, res)
-	log.WithField(api.RequestId, req.Id).Info("Connection closed")
-}
-
-func createEditReq(r *http.Request) (api.Request, error) {
-	// retrieve form values
-	nickname := r.FormValue("nickname")
-	file, header, err := r.FormFile("pic")
-	if err != nil {
-		log.Error(err)
-	}
-	// enforce max size
-	if header.Size > IMG_MAXSIZE {
-		err := errors.New("Image too large: maximum " + strconv.Itoa(IMG_MAXSIZE) + " bytes.")
-		return api.Request{}, err
-	}
-	defer file.Close()
-
-	// store image persistently
-	unameCookie, err := r.Cookie(auth.USERNAME_COOKIE_NAME)
-	if err != nil {
-		log.Error(err)
-		return api.Request{}, err
-	}
-	imgPath := utils.ImageUpload(file, unameCookie.Value)
-	sidCookie, err := r.Cookie(auth.SESS_COOKIE_NAME)
-	if err != nil {
-		log.Error(err)
-		return api.Request{}, err
-	}
-
-	// create return data
-	rid := r.Header.Get(api.RequestIdHeader)
-	ret := make(map[string]string)
-	ret[api.Nickname] = nickname
-	ret[api.ProfilePic] = imgPath
-	ret[api.SessionId] = sidCookie.Value
-	ret[api.Username] = unameCookie.Value
-	req := api.Request{
-		Id:   rid,
-		Type: "EDIT",
-		Data: ret,
-	}
-	return req, nil
-}
-
-func processEditRes(w http.ResponseWriter, r *http.Request, res api.Response) {
-	switch res.Code {
-	case api.EDIT_SUCCESS:
-		qs := utils.CreateQueryString("Edit Success!")
-		http.Redirect(w, r, "/edit"+qs, http.StatusSeeOther)
-	case api.EDIT_FAILED:
-		qs := utils.CreateQueryString("Edit Failed...")
-		http.Redirect(w, r, "/edit"+qs, http.StatusSeeOther)
-	}
-}
-
-// **********************************
-// *********** REGISTER *************
-// **********************************
-func (srv *HTTPServer) registerUser(w http.ResponseWriter, r *http.Request) {
-	req := createRegisterReq(r)
-	log.Info("Create register request", req)
-	conn, err := srv.getTcpConnPooled()
-	if err != nil {
-		log.Debug("In getTcpConnPooled")
-		srv.handleError(req.Id, &conn, err)
-		qs := utils.CreateQueryString("Register failed, please try again in a while")
-		http.Redirect(w, r, "/register"+qs, http.StatusSeeOther)
-		return
-	}
-
-	defer srv.TcpPool.Put(&conn)
-
-	// SEND REQUEST
-	log.Debug("Sending request", req)
-	err = conn.Enc.Encode(req)
-	if err != nil {
-		log.Debug("In request")
-		srv.handleError(req.Id, &conn, err)
-		qs := utils.CreateQueryString("Register failed, please try again in a while")
-		http.Redirect(w, r, "/register"+qs, http.StatusSeeOther)
-		return
-	}
-	log.Debug("Request sent", req)
-
-	// RECEIVE RESPONSE
-	var res api.Response
-	err = conn.Dec.Decode(&res)
-	if err != nil {
-		log.Info("In response")
-		srv.handleError(req.Id, &conn, err)
-		qs := utils.CreateQueryString("Register failed, please try again in a while")
-		http.Redirect(w, r, "/register"+qs, http.StatusSeeOther)
-		return
-	}
-	log.Info("Receive register response", res)
-
-	// PROCESS RESPONSE
-	processRegisterRes(w, r, res)
-	log.WithField(api.RequestId, req.Id).Info("Connection closed")
-}
-
-func createRegisterReq(r *http.Request) api.Request {
-	username := r.FormValue("username")
-	password := r.FormValue("password")
-	nickname := r.FormValue("nickname")
-	rid := r.Header.Get(api.RequestIdHeader)
-	ret := make(map[string]string)
-	ret[api.Username] = username
-	ret[api.PwHash] = security.Hash(password)
-	ret[api.Nickname] = nickname
-	req := api.Request{
-		Id:   rid,
-		Type: "REGISTER",
-		Data: ret,
-	}
-	return req
-}
-
-func processRegisterRes(w http.ResponseWriter, r *http.Request, res api.Response) {
-	switch res.Code {
-	case api.INSERT_SUCCESS:
-		qs := utils.CreateQueryString("Account created!")
-		http.Redirect(w, r, "/login"+qs, http.StatusSeeOther)
-	case api.INSERT_FAILED:
-		qs := utils.CreateQueryString("Account creation failed, please try again!")
-		http.Redirect(w, r, "/register"+qs, http.StatusSeeOther)
-	}
-}
-
-// ********************************
-// *********** LOGOUT *************
-// ********************************
-func (srv *HTTPServer) logout(w http.ResponseWriter, r *http.Request) {
-	req := createLogoutReq(r)
-	log.Info("Create logout request", req)
-	conn, err := srv.getTcpConnPooled()
-	if err != nil {
-		log.Debug("In getTcpConnPooled")
-		srv.handleError(req.Id, &conn, err)
-		qs := utils.CreateQueryString("Logout failed, please try again in a while")
-		http.Redirect(w, r, "/home"+qs, http.StatusSeeOther)
-		return
-	}
-	defer srv.TcpPool.Put(&conn)
-
-	// SEND REQUEST
-	log.Debug("Sending request", req)
-	err = conn.Enc.Encode(req)
-	if err != nil {
-		log.Debug("In request")
-		srv.handleError(req.Id, &conn, err)
-		qs := utils.CreateQueryString("Logout failed, please try again in a while")
-		http.Redirect(w, r, "/home"+qs, http.StatusSeeOther)
-		return
-	}
-	log.Debug("Request sent", req)
-
-	// RECEIVE RESPONSE
-	var res api.Response
-	err = conn.Dec.Decode(&res)
-	if err != nil {
-		log.Info("In response")
-		srv.handleError(req.Id, &conn, err)
-		qs := utils.CreateQueryString("Logout failed, please try again in a while")
-		http.Redirect(w, r, "/home"+qs, http.StatusSeeOther)
-		return
-	}
-	log.Info("Receive logout response", res)
-
-	// PROCESS RESPONSE
-	processLogoutRes(w, r, res)
-	log.WithField(api.RequestId, req.Id).Info("Connection closed")
-}
-
-func createLogoutReq(r *http.Request) api.Request {
-	c, _ := r.Cookie(auth.SESS_COOKIE_NAME)
-	rid := r.Header.Get(api.RequestIdHeader)
-	ret := make(map[string]string)
-	ret[api.SessionId] = c.Value
-	req := api.Request{
-		Id:   rid,
-		Type: "LOGOUT",
-		Data: ret,
-	}
-	return req
-}
-
-func processLogoutRes(w http.ResponseWriter, r *http.Request, res api.Response) {
-	switch res.Code {
-	case api.LOGOUT_SUCCESS:
-		// delete cookie
-		c, _ := r.Cookie(auth.SESS_COOKIE_NAME)
-		c = &http.Cookie{
-			Name:   auth.SESS_COOKIE_NAME,
-			Value:  "",
-			MaxAge: -1,
-		}
-		http.SetCookie(w, c)
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
-	}
-}
-
-// ******************************
-// *********** HOME *************
-// ******************************
-func (srv *HTTPServer) home(w http.ResponseWriter, r *http.Request) {
-	req := createHomeReq(r)
-	log.Info("Create home request", req)
-	conn, err := srv.getTcpConnPooled()
-	if err != nil {
-		log.Debug("In getTcpConnPooled")
-		srv.handleError(req.Id, &conn, err)
-		qs := utils.CreateQueryString("Home failed, please try again in a while")
-		http.Redirect(w, r, "/login"+qs, http.StatusSeeOther)
-		return
-	}
-	defer srv.TcpPool.Put(&conn)
-
-	// SEND REQUEST
-	log.Debug("Sending request", req)
-	err = conn.Enc.Encode(req)
-	if err != nil {
-		log.Debug("In request")
-		srv.handleError(req.Id, &conn, err)
-		qs := utils.CreateQueryString("Home failed, please try again in a while")
-		http.Redirect(w, r, "/login"+qs, http.StatusSeeOther)
-		return
-	}
-	log.Debug("Request sent", req)
-
-	// RECEIVE RESPONSE
-	var res api.Response
-	err = conn.Dec.Decode(&res)
-	if err != nil {
-		log.Info("In response")
-		srv.handleError(req.Id, &conn, err)
-		qs := utils.CreateQueryString("Home failed, please try again in a while")
-		http.Redirect(w, r, "/login"+qs, http.StatusSeeOther)
-		return
-	}
-	log.Info("Receive home response", res)
-
-	// PROCESS RESPONSE
-	processHomeRes(w, r, res)
-	log.WithField(api.RequestId, req.Id).Info("Connection closed")
-}
-
-// retrieves the current user based on session cookie.
-func createHomeReq(r *http.Request) api.Request {
-	cookie, err := r.Cookie(auth.SESS_COOKIE_NAME)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	// get the user details of this session id
-	rid := r.Header.Get(api.RequestIdHeader)
+func (srv *HTTPServer) getSession(sid string, rid string) (*api.User, error) {
+	// construct request
 	data := make(map[string]string)
-	data[api.SessionId] = cookie.Value
+	data[api.SessionId] = sid
 	req := api.Request{
 		Id:   rid,
-		Type: "HOME",
+		Type: "GET_SESSION",
 		Data: data,
 	}
-	return req
-}
 
-func processHomeRes(w http.ResponseWriter, r *http.Request, res api.Response) {
-	switch res.Code {
-	case api.CREDENTIALS_VALID:
-		renderTemplate(w, "home", res.Data)
-	case api.CREDENTIALS_INVALID:
-		qs := utils.CreateQueryString("User not found, please login!")
-		http.Redirect(w, r, "/login"+qs, http.StatusSeeOther)
+	conn, err := srv.getTcpConnPooled()
+	if err != nil {
+		log.Error(err)
+		return nil, err
 	}
-}
+	defer srv.TcpPool.Put(&conn)
 
-// ***************************************
-// *********** HTTP HANDLERS *************
-// ***************************************
-func (srv *HTTPServer) rootHandler(w http.ResponseWriter, r *http.Request) {
-	if isLoggedIn(getSid(r)) {
-		http.Redirect(w, r, "/home", http.StatusSeeOther)
-		return
+	// send request
+	err = conn.Enc.Encode(req)
+	if err != nil {
+		srv.handleError(req.Id, &conn, err)
+		return nil, err
 	}
-	http.Redirect(w, r, "/login", http.StatusMovedPermanently)
-}
 
-func (srv *HTTPServer) loginHandler(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodGet:
-		desc := r.URL.Query().Get("desc")
-		renderTemplate(w, "login", desc)
-	case http.MethodPost:
-		srv.login(w, r)
-	default:
-		log.Fatalln("Unused method" + r.Method)
+	// receive response
+	var res api.Response
+	err = conn.Dec.Decode(&res)
+	if err != nil {
+		srv.handleError(req.Id, &conn, err)
+		return nil, err
 	}
-}
 
-func (srv *HTTPServer) editHandler(w http.ResponseWriter, r *http.Request) {
-	if !isLoggedIn(getSid(r)) {
-		http.Redirect(w, r, "/login", http.StatusForbidden)
-		return
-	}
-	switch r.Method {
-	case http.MethodGet:
-		desc := r.URL.Query().Get("desc")
-		renderTemplate(w, "edit", desc)
-	case http.MethodPost:
-		srv.edit(w, r)
-	default:
-		log.Fatalln("Unused method " + r.Method)
-	}
-}
-
-func (srv *HTTPServer) registerHandler(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodGet:
-		desc := r.URL.Query().Get("desc")
-		renderTemplate(w, "register", desc)
-	case http.MethodPost:
-		srv.registerUser(w, r)
-	default:
-		log.Fatalln("Unused method " + r.Method)
-	}
-}
-
-func (srv *HTTPServer) homeHandler(w http.ResponseWriter, r *http.Request) {
-	if !(isLoggedIn(getSid(r))) {
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
-		return
-	}
-	srv.home(w, r)
-}
-
-func (srv *HTTPServer) logoutHandler(w http.ResponseWriter, r *http.Request) {
-	if !isLoggedIn(getSid(r)) {
-		http.Redirect(w, r, "/", http.StatusSeeOther)
-		return
-	}
-	srv.logout(w, r)
+	// process response
+	return &api.User{
+		Username:   res.Data[api.Username],
+		Nickname:   res.Data[api.Nickname],
+		PwHash:     res.Data[api.PwHash],
+		ProfilePic: res.Data[api.ProfilePic],
+	}, nil
 }
 
 func initLogger(logLevel string, logOutput string) {
@@ -654,34 +201,6 @@ func initPool() pool.Pool {
 	return myPool
 }
 
-func initPoolSP() poolSP.Pool {
-	//factory Specify the method to create the connection
-	factory := func() (interface{}, error) { return net.Dial("tcp", "127.0.0.1:9090") }
-
-	//close Specify the method to close the connection
-	closee := func(v interface{}) error { return v.(net.Conn).Close() }
-
-	//ping Specify the method to detect whether the connection is invalid
-	ping := func(v interface{}) error { return nil }
-
-	//Create a connection pool: Initialize the number of connections to 5, the maximum idle connection is 20, and the maximum concurrent connection is 30
-	poolConfig := &poolSP.Config{
-		InitialCap: 5,
-		MaxIdle:    5,
-		MaxCap:     5,
-		Factory:    factory,
-		Close:      closee,
-		Ping:       ping,
-		//The maximum idle time of the connection, the connection exceeding this time will be closed, which can avoid the problem of automatic failure when connecting to EOF when idle
-		IdleTimeout: 60 * time.Second,
-	}
-	p, err := poolSP.NewChannelPool(poolConfig)
-	if err != nil {
-		panic(err)
-	}
-	return p
-}
-
 func (srv *HTTPServer) withRequestId(handler http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		rid := r.Header.Get(api.RequestIdHeader)
@@ -691,6 +210,46 @@ func (srv *HTTPServer) withRequestId(handler http.HandlerFunc) http.HandlerFunc 
 		}
 		handler(w, r)
 	}
+}
+
+func (srv *HTTPServer) withSessValidation(handler http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		c, err := r.Cookie(auth.SESS_COOKIE_NAME)
+		if err != nil {
+			if err == http.ErrNoCookie {
+				w.WriteHeader(http.StatusUnauthorized)
+				renderTemplate(w, "login", "Unauthorised, please login")
+				return
+			}
+			log.Error(err)
+			w.WriteHeader(http.StatusBadRequest)
+			renderTemplate(w, "login", nil)
+			return
+		}
+
+		rid := r.Header.Get(api.RequestIdHeader)
+		user, err := srv.getSession(c.Value, rid)
+
+		if err != nil {
+			// no such session, serve as usual
+			log.Error(err)
+			handler.ServeHTTP(w, r)
+		} else {
+			// server with user
+			handler.ServeHTTP(w, r.WithContext(newContext(r.Context(), user)))
+		}
+	}
+}
+
+// returns a new context that carries value u
+func newContext(ctx context.Context, u *api.User) context.Context {
+	return context.WithValue(ctx, CONTEXT_KEY, u)
+}
+
+// returns the User value stored in ctx, if any
+func fromContext(ctx context.Context) (*api.User, bool) {
+	u, ok := ctx.Value(CONTEXT_KEY).(*api.User)
+	return u, ok
 }
 
 func (srv *HTTPServer) Start() {
@@ -703,8 +262,8 @@ func (srv *HTTPServer) Start() {
 	http.HandleFunc("/", srv.withRequestId(srv.rootHandler))
 	http.HandleFunc("/login", srv.withRequestId(srv.loginHandler))
 	http.HandleFunc("/logout", srv.withRequestId(srv.logoutHandler))
-	http.HandleFunc("/home", srv.withRequestId(srv.homeHandler))
-	http.HandleFunc("/edit", srv.withRequestId(srv.editHandler))
+	http.HandleFunc("/home", srv.withSessValidation(srv.withRequestId(srv.homeHandler)))
+	http.HandleFunc("/edit", srv.withSessValidation(srv.withRequestId(srv.editHandler)))
 	http.HandleFunc("/register", srv.withRequestId(srv.registerHandler))
 	http.Handle("/images/", http.StripPrefix("/images", http.FileServer(http.Dir("./images"))))
 	server := &http.Server{
@@ -715,7 +274,6 @@ func (srv *HTTPServer) Start() {
 		IdleTimeout:  120 * time.Second,
 	}
 	log.Fatal(server.ListenAndServe())
-	//log.Fatal(http.ListenAndServe(fmt.Sprintf("%v:%v", srv.Hostname, srv.Port), http.DefaultServeMux))
 }
 
 func (srv *HTTPServer) Stop() {

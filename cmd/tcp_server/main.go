@@ -5,6 +5,7 @@ import (
 	"example.com/kendrick/api"
 	"example.com/kendrick/internal/tcp_server/auth"
 	database "example.com/kendrick/internal/tcp_server/database"
+	"example.com/kendrick/internal/tcp_server/session"
 	"flag"
 	"fmt"
 	log "github.com/sirupsen/logrus"
@@ -19,7 +20,9 @@ import (
 )
 
 type TCPServer struct {
-	Port string
+	Port    string
+	DB      database.DB
+	SessMgr session.SessionManager
 }
 
 var (
@@ -55,7 +58,7 @@ func handleError(rid string, conn net.Conn, err error) {
 	}
 }
 
-func handleConn(conn net.Conn) {
+func (srv *TCPServer) handleConn(conn net.Conn) {
 	defer conn.Close()
 	decoder := gob.NewDecoder(conn)
 	encoder := gob.NewEncoder(conn)
@@ -70,7 +73,7 @@ func handleConn(conn net.Conn) {
 			continue
 		}
 		log.Info("Receive request success", msgs)
-		response := handleData(&msgs)
+		response := srv.handleData(&msgs)
 		log.Info("Sending response", response)
 		err = encoder.Encode(response)
 		if err != nil {
@@ -82,26 +85,58 @@ func handleConn(conn net.Conn) {
 }
 
 // Invokes the relevant request handler
-func handleData(req *api.Request) api.Response {
+func (srv *TCPServer) handleData(req *api.Request) api.Response {
 	switch req.Type {
 	case "LOGIN":
-		return handleLoginReq(req)
+		return srv.handleLoginReq(req)
 	case "EDIT":
-		return handleEditReq(req)
+		return srv.handleEditReq(req)
 	case "LOGOUT":
-		return handleLogoutReq(req)
+		return srv.handleLogoutReq(req)
 	case "REGISTER":
-		return handleRegReq(req)
+		return srv.handleRegReq(req)
 	case "HOME":
-		return handleHomeReq(req)
+		return srv.handleHomeReq(req)
+	case "GET_SESSION":
+		return srv.handleSessReq(req)
 	default:
 		log.Error("Unknown request source " + req.Type)
 	}
 	return api.Response{}
 }
 
+func (srv *TCPServer) handleSessReq(req *api.Request) api.Response {
+	sid := req.Data[api.SessionId]
+	log.WithFields(log.Fields{
+		api.SessionId: sid,
+		api.RequestId: req.Id,
+	}).Debug("Handling session request")
+
+	sess, err := srv.SessMgr.GetSession(sid)
+	if err != nil {
+		log.Error(err)
+		return api.Response{
+			Id:          req.Id,
+			Code:        api.GET_SESS_FAILED,
+			Description: err.Error(),
+			Data:        nil,
+		}
+	}
+	ret := make(map[string]string)
+	ret[api.Username] = sess.GetUsername()
+	ret[api.Nickname] = sess.GetNickname()
+	ret[api.PwHash] = sess.GetPwHash()
+	ret[api.ProfilePic] = sess.GetProfilePic()
+	return api.Response{
+		Id:          req.Id,
+		Code:        api.GET_SESS_SUCCESS,
+		Description: "Success",
+		Data:        ret,
+	}
+}
+
 // Checks the validity of username and password hash in login request.
-func handleLoginReq(req *api.Request) api.Response {
+func (srv *TCPServer) handleLoginReq(req *api.Request) api.Response {
 	data := req.Data
 	username := data[api.Username]
 	pw := data[api.PwPlain]
@@ -110,15 +145,34 @@ func handleLoginReq(req *api.Request) api.Response {
 		api.PwPlain:  pw,
 	}).Debug("Handling login request")
 
-	if auth.IsValidPassword(username, pw) {
-		// TODO: use session manager
-		sid := auth.CreateSession(username)
+	user, err := srv.DB.GetUser(username)
+	if err != nil {
+		log.Debug("Invalid password")
+		return api.Response{
+			Id:          req.Id,
+			Code:        api.LOGIN_FAILED,
+			Description: err.Error(),
+			Data:        nil,
+		}
+	}
+
+	if auth.IsValidPassword(user, pw) {
+		sess, err := srv.SessMgr.CreateSession(user)
+		if err != nil {
+			log.Error(err)
+			return api.Response{
+				Id:          req.Id,
+				Code:        api.LOGIN_FAILED,
+				Description: err.Error(),
+				Data:        nil,
+			}
+		}
 		ret := make(map[string]string)
 		ret[api.Username] = username
-		ret[api.SessionId] = sid
+		ret[api.SessionId] = sess.GetSessID()
 		res := api.Response{
 			Id:          req.Id,
-			Code:        api.CREDENTIALS_VALID,
+			Code:        api.LOGIN_SUCCESS,
 			Description: "Login for " + username + " succeeded",
 			Data:        ret,
 		}
@@ -127,7 +181,7 @@ func handleLoginReq(req *api.Request) api.Response {
 	}
 	res := api.Response{
 		Id:          req.Id,
-		Code:        api.CREDENTIALS_INVALID,
+		Code:        api.LOGIN_FAILED,
 		Description: "Login for " + username + " failed",
 		Data:        nil,
 	}
@@ -135,7 +189,7 @@ func handleLoginReq(req *api.Request) api.Response {
 	return res
 }
 
-func handleEditReq(req *api.Request) api.Response {
+func (srv *TCPServer) handleEditReq(req *api.Request) api.Response {
 	data := req.Data
 	sid := data[api.SessionId]
 	nickname := data[api.Nickname]
@@ -150,7 +204,7 @@ func handleEditReq(req *api.Request) api.Response {
 	}).Debug("Handling edit request")
 
 	// Find the username, and replace the relevant details
-	numRows := database.UpdateUser(username, nickname, picPath)
+	numRows := srv.DB.UpdateUser(username, nickname, picPath)
 	if numRows == 1 {
 		res := api.Response{
 			Id:          req.Id,
@@ -171,7 +225,7 @@ func handleEditReq(req *api.Request) api.Response {
 	return res
 }
 
-func handleLogoutReq(req *api.Request) api.Response {
+func (srv *TCPServer) handleLogoutReq(req *api.Request) api.Response {
 	data := req.Data
 	sid := data[api.SessionId]
 	log.WithFields(log.Fields{
@@ -179,19 +233,26 @@ func handleLogoutReq(req *api.Request) api.Response {
 		api.SessionId: sid,
 	}).Debug("Handling logout request")
 
-	// TODO: use session manager
-	username := auth.DelSessionUser(sid)
+	err := srv.SessMgr.DeleteSession(sid)
+	if err != nil {
+		return api.Response{
+			Id:          req.Id,
+			Code:        api.LOGIN_FAILED,
+			Description: err.Error(),
+			Data:        nil,
+		}
+	}
 	res := api.Response{
 		Id:          req.Id,
 		Code:        api.LOGOUT_SUCCESS,
-		Description: "Logged out: " + sid + " " + username,
+		Description: "Logged out session: " + sid,
 		Data:        nil,
 	}
 	log.Debug("Valid logout")
 	return res
 }
 
-func handleRegReq(req *api.Request) api.Response {
+func (srv *TCPServer) handleRegReq(req *api.Request) api.Response {
 	data := req.Data
 	nickname := data[api.Nickname]
 	username := data[api.Username]
@@ -203,7 +264,7 @@ func handleRegReq(req *api.Request) api.Response {
 		api.Nickname:  nickname,
 	}).Debug("Handling register request")
 
-	numRows := database.InsertUser(username, password, nickname)
+	numRows := srv.DB.InsertUser(username, password, nickname)
 	if numRows == 1 {
 		res := api.Response{
 			Id:          req.Id,
@@ -224,7 +285,7 @@ func handleRegReq(req *api.Request) api.Response {
 	return res
 }
 
-func handleHomeReq(req *api.Request) api.Response {
+func (srv *TCPServer) handleHomeReq(req *api.Request) api.Response {
 	data := req.Data
 	sid := data[api.SessionId]
 	log.WithFields(log.Fields{
@@ -232,18 +293,26 @@ func handleHomeReq(req *api.Request) api.Response {
 		api.SessionId: sid,
 	}).Debug("Handling home request")
 
-	username := auth.GetSessionUser(sid)
-	log.Debug(username)
-	rows := database.GetUser(username)
-	log.Debug(rows)
-	if len(rows) == 1 {
+	sess, err := srv.SessMgr.GetSession(sid)
+	if err != nil {
+		log.Error(err)
+		return api.Response{
+			Id:          req.Id,
+			Code:        api.HOME_FAILED,
+			Description: err.Error(),
+			Data:        nil,
+		}
+	}
+	username := sess.GetUsername()
+	user, err := srv.DB.GetUser(username)
+	if err == nil {
 		ret := make(map[string]string)
-		ret[api.Username] = rows[0].Username
-		ret[api.Nickname] = rows[0].Nickname
-		ret[api.ProfilePic] = rows[0].ProfilePic
+		ret[api.Username] = user.Username
+		ret[api.Nickname] = user.Nickname
+		ret[api.ProfilePic] = user.ProfilePic
 		response := api.Response{
 			Id:          req.Id,
-			Code:        api.CREDENTIALS_VALID,
+			Code:        api.HOME_SUCCESS,
 			Description: "User " + username + " found!",
 			Data:        ret,
 		}
@@ -252,8 +321,8 @@ func handleHomeReq(req *api.Request) api.Response {
 	}
 	response := api.Response{
 		Id:          req.Id,
-		Code:        api.CREDENTIALS_INVALID,
-		Description: "User " + username + " not found...",
+		Code:        api.HOME_FAILED,
+		Description: err.Error(),
 		Data:        nil,
 	}
 	log.Debug("Invalid home request")
@@ -305,8 +374,6 @@ func initLogger(logLevel string, logOutput string) {
 }
 
 func (srv *TCPServer) Start() {
-	database.Connect()
-	database.DeleteSessions()
 	initLogger(*logLevel, *logOutput)
 
 	log.Info("TCP Server listening on port ", srv.Port)
@@ -324,12 +391,12 @@ func (srv *TCPServer) Start() {
 			c.SetKeepAlive(true)
 			c.SetKeepAlivePeriod(time.Second * 60)
 		}
-		go handleConn(conn)
+		go srv.handleConn(conn)
 	}
 }
 
 func (srv *TCPServer) Stop() {
-	database.Disconnect()
+	srv.SessMgr.Stop()
 	log.Info("HTTP server stopped.")
 }
 
@@ -355,8 +422,22 @@ func main() {
 		pprof.StartCPUProfile(f)
 		defer pprof.StopCPUProfile()
 	}
+	// session manager
+	sessMgr, err := session.NewManager(4)
+	if err != nil {
+		log.Panicln(err)
+	}
+	// database for users
+	db, err := database.NewDB()
+	if err != nil {
+		log.Panicln(err)
+	}
 
-	server := TCPServer{Port: "9090"}
+	server := TCPServer{
+		Port:    "9090",
+		SessMgr: sessMgr,
+		DB:      db,
+	}
 	defer server.Stop()
 	go server.Start()
 

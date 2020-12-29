@@ -8,7 +8,6 @@ require (
 	github.com/go-sql-driver/mysql v1.5.0
 	github.com/klauspost/compress v1.11.4 // indirect
 	github.com/satori/uuid v1.2.0
-	github.com/silenceper/pool v1.0.0 // indirect
 	github.com/sirupsen/logrus v1.7.0
 	github.com/vmihailenco/msgpack/v5 v5.1.0 // indirect
 	golang.org/x/crypto v0.0.0-20201208171446-5f87f3452ae9

@@ -1,5 +1,6 @@
 package api
 
+// Request/Response data keys
 const (
 	Username        = "username"
 	Nickname        = "nickname"
@@ -13,17 +14,20 @@ const (
 	ResDesc         = "ResDesc"
 )
 
-type User struct {
-	Username   string
-	Nickname   string
-	PwHash     string
-	ProfilePic string
-}
-
-type Session struct {
-	Uuid     string
-	Username string
-}
+// Login constants
+const (
+	LOGIN_SUCCESS    = 10
+	LOGIN_FAILED     = 11
+	EDIT_SUCCESS     = 20
+	EDIT_FAILED      = 21
+	LOGOUT_SUCCESS   = 30
+	INSERT_SUCCESS   = 40
+	INSERT_FAILED    = 41
+	HOME_SUCCESS     = 50
+	HOME_FAILED      = 51
+	GET_SESS_SUCCESS = 60
+	GET_SESS_FAILED  = 61
+)
 
 type Request struct {
 	Id   string // uuid for logging
@@ -37,14 +41,3 @@ type Response struct {
 	Description string
 	Data        map[string]string
 }
-
-// Login constants
-const (
-	CREDENTIALS_VALID   = 10
-	CREDENTIALS_INVALID = 11
-	EDIT_SUCCESS        = 20
-	EDIT_FAILED         = 21
-	LOGOUT_SUCCESS      = 30
-	INSERT_SUCCESS      = 40
-	INSERT_FAILED       = 41
-)
