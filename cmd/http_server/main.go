@@ -214,6 +214,9 @@ func (srv *HTTPServer) withRequestId(handler http.HandlerFunc) http.HandlerFunc 
 
 func (srv *HTTPServer) withSessValidation(handler http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		rid := r.Header.Get(api.RequestIdHeader)
+		logger := log.WithFields(log.Fields{api.RequestId: rid})
+		logger.Info("Start session validation")
 		c, err := r.Cookie(auth.SESS_COOKIE_NAME)
 		if err != nil {
 			if err == http.ErrNoCookie {
@@ -227,15 +230,18 @@ func (srv *HTTPServer) withSessValidation(handler http.HandlerFunc) http.Handler
 			return
 		}
 
-		rid := r.Header.Get(api.RequestIdHeader)
-		user, err := srv.getSession(c.Value, rid)
+		sid := c.Value
+		logger.Debug("Getting user of session ", sid)
+		user, err := srv.getSession(sid, rid)
 
 		if err != nil {
 			// no such session, serve as usual
 			log.Error(err)
+			logger.Info("Serving with no session")
 			handler.ServeHTTP(w, r)
 		} else {
 			// server with user
+			logger.Info("Serving with session", user)
 			handler.ServeHTTP(w, r.WithContext(newContext(r.Context(), user)))
 		}
 	}

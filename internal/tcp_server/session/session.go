@@ -20,6 +20,7 @@ var (
 type SessionManager interface {
 	GetSession(sid string) (api.Session, error)
 	CreateSession(user *api.User) (api.Session, error)
+	EditSession(sid string, user *api.User) error
 	DeleteSession(sid string) error
 	Stop()
 }
@@ -30,7 +31,11 @@ type SessionMgrStruct struct {
 }
 
 func NewManager(sessionTimeoutHrs int) (SessionManager, error) {
-	sessionCache := cache.NewRedisCache("localhost:6379", 0, time.Duration(sessionTimeoutHrs)*time.Hour)
+	sessionCache := cache.NewRedisCache(
+		"localhost:6379",
+		0,
+		time.Duration(sessionTimeoutHrs)*time.Hour,
+	)
 
 	return &SessionMgrStruct{
 		sessionCache:      sessionCache,
@@ -53,6 +58,18 @@ func (manager *SessionMgrStruct) CreateSession(user *api.User) (api.Session, err
 	}
 	err := manager.sessionCache.SetSession(session.SessID, &session)
 	return &session, err
+}
+
+func (manager *SessionMgrStruct) EditSession(sid string, user *api.User) error {
+	newSess := api.SessionStruct{
+		SessID: sid,
+		User:   user,
+	}
+	err := manager.sessionCache.SetSession(sid, &newSess)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (manager *SessionMgrStruct) DeleteSession(sid string) error {

@@ -195,6 +195,7 @@ func (srv *TCPServer) handleEditReq(req *api.Request) api.Response {
 	nickname := data[api.Nickname]
 	picPath := data[api.ProfilePic]
 	username := data[api.Username]
+	pwHash := data[api.PwHash]
 	log.WithFields(log.Fields{
 		api.RequestId:  req.Id,
 		api.SessionId:  sid,
@@ -203,9 +204,16 @@ func (srv *TCPServer) handleEditReq(req *api.Request) api.Response {
 		api.ProfilePic: picPath,
 	}).Debug("Handling edit request")
 
-	// Find the username, and replace the relevant details
+	// Replace DB user details and current session details with new user
+	newUser := api.User{
+		Username:   username,
+		Nickname:   nickname,
+		ProfilePic: picPath,
+		PwHash:     pwHash,
+	}
 	numRows := srv.DB.UpdateUser(username, nickname, picPath)
-	if numRows == 1 {
+	err := srv.SessMgr.EditSession(sid, &newUser)
+	if numRows == 1 && err == nil {
 		res := api.Response{
 			Id:          req.Id,
 			Code:        api.EDIT_SUCCESS,

@@ -110,6 +110,7 @@ func createEditReq(r *http.Request) (api.Request, error) {
 	ret[api.ProfilePic] = imgPath
 	ret[api.SessionId] = sidCookie.Value
 	ret[api.Username] = user.Username
+	ret[api.PwHash] = user.PwHash
 	req := api.Request{
 		Id:   rid,
 		Type: "EDIT",

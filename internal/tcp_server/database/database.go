@@ -154,25 +154,10 @@ func (db *DBStruct) Connect() {
 	if err != nil {
 		log.Panicln(err)
 	}
-	insertSession, err := db.sqlDB.Prepare("INSERT INTO sessions VALUES (?, ?)")
-	if err != nil {
-		log.Panicln(err)
-	}
-	getSession, err := db.sqlDB.Prepare("SELECT uuid, username FROM sessions WHERE uuid=?")
-	if err != nil {
-		log.Panicln(err)
-	}
-	getSessions, err := db.sqlDB.Prepare("SELECT * FROM sessions")
-	if err != nil {
-		log.Panicln(err)
-	}
 
 	statements[GET_USER] = getUser
 	statements[INSERT_USER] = insertUser
 	statements[UPDATE_USER] = updateUser
-	statements[GET_SESSION] = getSession
-	statements[GET_SESSIONS] = getSessions
-	statements[INSERT_SESSION] = insertSession
 	db.statements = statements
 
 	// user cache
