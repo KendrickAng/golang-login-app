@@ -20,10 +20,12 @@ var ctx context.Context = context.TODO()
 
 func NewRedisCache(host string, db int, ttl time.Duration) *redisCache {
 	rdb := redis.NewClient(&redis.Options{
-		Addr:       host,
-		DB:         db,
-		Password:   "", // no password set
-		MaxRetries: 3,
+		Addr:            host,
+		DB:              db,
+		Password:        "", // no password set
+		MaxRetries:      3,
+		MinRetryBackoff: time.Millisecond * 8,
+		MaxRetryBackoff: time.Millisecond * 512,
 	})
 	_, err := rdb.Ping(ctx).Result()
 	if err != nil {
