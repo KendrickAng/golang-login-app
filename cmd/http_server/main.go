@@ -8,6 +8,7 @@ import (
 	"example.com/kendrick/internal/tcp_server/auth"
 	"flag"
 	"fmt"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/satori/uuid"
 	log "github.com/sirupsen/logrus"
 	"html/template"
@@ -195,7 +196,7 @@ func initPool() pool.Pool {
 		InitialSize: 1000,
 		MaxSize:     1200,
 		Factory: func() (net.Conn, error) {
-			return net.Dial("tcp", "127.0.0.1:9090")
+			return net.Dial("tcp", "127.0.0.1:9999")
 		},
 	})
 	return myPool
@@ -263,6 +264,9 @@ func (srv *HTTPServer) Start() {
 	initLogger(*logLevel, *logOutput)
 
 	log.Info("HTTP server listening on port ", srv.Port)
+
+	// metrics
+	http.Handle("/metrics", promhttp.Handler())
 
 	// have the server listen on required routes
 	http.HandleFunc("/", srv.withRequestId(srv.rootHandler))

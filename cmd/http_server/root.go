@@ -1,6 +1,8 @@
 package main
 
-import "net/http"
+import (
+	"net/http"
+)
 
 func (srv *HTTPServer) rootHandler(w http.ResponseWriter, r *http.Request) {
 	if isLoggedIn(getSid(r)) {

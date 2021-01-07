@@ -22,6 +22,14 @@ flags.
 - See TCP server flags: `./tcp_server -h`
     - Example: `./main --cpuprofile=cpu.prof --logLevel=ERROR --logOutput=ALL`
 
+# Enabling monitoring & visualisation
+Optionally, start Prometheus and Grafana:
+- Ensure prometheus and grafana are installed (available on brew)
+- Start Prometheus:
+  - In `/tools/prometheus`: `prometheus --config.file=promtheus.yml`
+- Start Grafana:
+  - TODO
+
 # Project Structure
 Follows https://github.com/golang-standards/project-layout
 - `api` stores protocol definition used in TCP client-server communication

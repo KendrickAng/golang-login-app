@@ -442,7 +442,7 @@ func main() {
 	}
 
 	server := TCPServer{
-		Port:    "9090",
+		Port:    "9999",
 		SessMgr: sessMgr,
 		DB:      db,
 	}
