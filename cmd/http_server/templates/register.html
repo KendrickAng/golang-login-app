@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/skeleton/2.0.4/skeleton.min.css">
+</head>
+
+<body>
+<div class="container">
+    <h1>Register</h1>
+
+    {{ if . }}
+    <h6>{{.}}</h6>
+    {{ end }}
+
+    <div class="row">
+        <form action="/register" method="POST">
+            <div class="twelve columns">
+                <label for="uname">Username</label>
+                <input class="u-full-width" type="text" name="username" id="uname" required>
+            </div>
+            <div class="twelve columns">
+                <label for="pw">Password</label>
+                <input class="u-full-width" type="password" name="password" id="pw" required>
+            </div>
+            <div class="twelve columns">
+                <label for="nname">Nickname</label>
+                <input class="u-full-width" type="text" name="nickname" id="nname" required>
+            </div>
+            <button class="button-primary" type="submit">Submit</button>
+        </form>
+    </div>
+
+    <a href="/login">Login</a>
+</div>
+
+</body>
+</html>
