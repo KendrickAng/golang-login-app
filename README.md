@@ -27,6 +27,8 @@ Optionally, start Prometheus and Grafana:
 - Ensure prometheus and grafana are installed (available on brew)
 - Start Prometheus:
   - In `/tools/prometheus`: `prometheus --config.file=promtheus.yml`
+  - Supported metrics:
+    - `namespace_subsystem_login_count`
 - Start Grafana:
   - TODO
 
