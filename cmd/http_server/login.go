@@ -13,6 +13,10 @@ import (
 // *********** LOGIN *************
 // *******************************
 func (srv *HTTPServer) loginHandler(w http.ResponseWriter, r *http.Request) {
+	// TODO add get, post labels
+	srv.MetricMgr.IncLoginCount()
+	log.Info("monitoring: increase login count")
+
 	switch r.Method {
 	case http.MethodGet:
 		desc := r.URL.Query().Get("desc")

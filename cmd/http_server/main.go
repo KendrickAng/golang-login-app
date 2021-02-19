@@ -20,6 +20,7 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"example.com/kendrick/api"
+	"example.com/kendrick/internal/http_server/metrics"
 	"example.com/kendrick/internal/http_server/pool"
 	"example.com/kendrick/internal/tcp_server/auth"
 )
@@ -40,10 +41,11 @@ const (
 )
 
 type HTTPServer struct {
-	Server   http.Server
-	TcpPool  pool.Pool
-	Hostname string
-	Port     string
+	Server    http.Server
+	TcpPool   pool.Pool
+	MetricMgr metrics.MetricManager
+	Hostname  string
+	Port      string
 }
 
 var templates *template.Template
@@ -299,9 +301,10 @@ func main() {
 	log.Info("LOGOUTPUT: " + *logOutput)
 
 	server := HTTPServer{
-		Hostname: "127.0.0.1",
-		Port:     "8080",
-		TcpPool:  initPool(),
+		Hostname:  "127.0.0.1",
+		Port:      "8080",
+		TcpPool:   initPool(),
+		MetricMgr: metrics.NewMetricManager(),
 	}
 
 	defer server.Stop()
