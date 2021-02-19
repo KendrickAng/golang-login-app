@@ -3,14 +3,8 @@ package main
 import (
 	"context"
 	"errors"
-	"example.com/kendrick/api"
-	"example.com/kendrick/internal/http_server/pool"
-	"example.com/kendrick/internal/tcp_server/auth"
 	"flag"
 	"fmt"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/satori/uuid"
-	log "github.com/sirupsen/logrus"
 	"html/template"
 	"io"
 	"io/ioutil"
@@ -20,6 +14,14 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/satori/uuid"
+	log "github.com/sirupsen/logrus"
+
+	"example.com/kendrick/api"
+	"example.com/kendrick/internal/http_server/pool"
+	"example.com/kendrick/internal/tcp_server/auth"
 )
 
 var (
