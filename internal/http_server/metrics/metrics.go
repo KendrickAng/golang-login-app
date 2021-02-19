@@ -4,21 +4,28 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
+const (
+	METHOD_LABEL = "method"
+)
+
 type MetricManager struct {
-	loginCounter prometheus.Counter
+	loginCounter *prometheus.CounterVec
 }
 
 func NewMetricManager() MetricManager {
 	m := MetricManager{}
-	m.loginCounter = prometheus.NewCounter(prometheus.CounterOpts{
-		// fully qualified name of the metric, only Name mandatory
-		Namespace: "namespace",
-		Subsystem: "subsystem",
-		Name:      "login_count",
+	m.loginCounter = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			// fully qualified name of the metric, only Name mandatory
+			Namespace: "namespace",
+			Subsystem: "subsystem",
+			Name:      "login_count",
 
-		// Metrics with same FQN have same help
-		Help: "Total login requests handled by http server",
-	})
+			// Metrics with same FQN have same help
+			Help: "Total login requests handled by http server",
+		},
+		[]string{METHOD_LABEL},
+	)
 
 	// register metrics
 	prometheus.DefaultRegisterer.MustRegister(m.loginCounter)
@@ -26,6 +33,10 @@ func NewMetricManager() MetricManager {
 	return m
 }
 
-func (m *MetricManager) IncLoginCount() {
-	m.loginCounter.Inc()
+func (m *MetricManager) IncGetLoginCount() {
+	m.loginCounter.With(prometheus.Labels{METHOD_LABEL: "GET"}).Inc()
+}
+
+func (m *MetricManager) IncPostLoginCount() {
+	m.loginCounter.With(prometheus.Labels{METHOD_LABEL: "POST"}).Inc()
 }

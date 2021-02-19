@@ -13,15 +13,15 @@ import (
 // *********** LOGIN *************
 // *******************************
 func (srv *HTTPServer) loginHandler(w http.ResponseWriter, r *http.Request) {
-	// TODO add get, post labels
-	srv.MetricMgr.IncLoginCount()
-	log.Info("monitoring: increase login count")
-
 	switch r.Method {
 	case http.MethodGet:
+		srv.MetricMgr.IncGetLoginCount()
+		log.Info("monitoring: increase GET login count")
 		desc := r.URL.Query().Get("desc")
 		renderTemplate(w, "login", desc)
 	case http.MethodPost:
+		srv.MetricMgr.IncPostLoginCount()
+		log.Info("monitoring: increase POST login count")
 		srv.login(w, r)
 	default:
 		log.Fatalln("Unused method" + r.Method)
