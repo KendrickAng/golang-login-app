@@ -1,5 +1,3 @@
-Entry task for Shared Services backend internship
-
 # Running instructions
 - Build both servers. From the project root (where `README.md` is located):
 - Build the HTTP server:
